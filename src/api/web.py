@@ -33,9 +33,10 @@ web_app.middleware("http")(auth_middleware)
 # Make reseller routes accessible without admin auth
 import src.api.auth as _auth_mod
 _auth_mod.PUBLIC_PATHS.add("/r/panel")
+_auth_mod.PUBLIC_PATHS.update({"/mini", "/api/mini/init", "/api/mini/verify"})
 # Monkeypatch prefix check to include /api/r/ and /r/
 _orig_prefixes = _auth_mod.PUBLIC_PREFIXES
-_auth_mod.PUBLIC_PREFIXES = _orig_prefixes + ("/api/r/", "/r/")
+_auth_mod.PUBLIC_PREFIXES = _orig_prefixes + ("/api/r/", "/r/", "/api/mini/")
 
 # ---------------------------------------------------------------------------
 # DB imports (lazy to avoid circular imports at module level)
@@ -46,8 +47,9 @@ from src.models.database import User as DBUser, Analytics, Alert, Connection
 from src.core.marzban_client import marzban_client
 from src.core.device_tracker import device_tracker
 from src.core.geoip import get_geo
+from src.core import server_manager
 from sqlalchemy import select, func, desc, distinct, delete
-from src.models.database import UserIP, PromoCode, TariffPlan, Reseller, ResellerTransaction, ResellerUser, AutoRenewal
+from src.models.database import UserIP, PromoCode, TariffPlan, Reseller, ResellerTransaction, ResellerUser, AutoRenewal, Server
 
 # ---------------------------------------------------------------------------
 # WebSocket manager
@@ -172,6 +174,10 @@ async def page_export(request: Request):
 @web_app.get("/geo", response_class=HTMLResponse)
 async def page_geo(request: Request):
     return templates.TemplateResponse(request, "geo.html")
+
+@web_app.get("/servers", response_class=HTMLResponse)
+async def page_servers(request: Request):
+    return templates.TemplateResponse(request, "servers.html")
 
 # ---------------------------------------------------------------------------
 # API routes — REAL DATA
@@ -1883,6 +1889,121 @@ async def api_reseller_tariffs():
         } for t in rows]
 
 
+# ---------------------------------------------------------------------------
+# Telegram Mini App
+# ---------------------------------------------------------------------------
+
+import hashlib
+import hmac
+
+_mini_sessions: dict[str, dict] = {}  # token -> {user_id, username, exp}
+
+
+def _validate_init_data(init_data: str) -> dict | None:
+    """Validate Telegram WebApp initData using HMAC-SHA256."""
+    from src.config import settings
+    bot_token = settings.bot_token
+    if not bot_token or not init_data:
+        return None
+    try:
+        vals = {}
+        for pair in init_data.split("&"):
+            k, _, v = pair.partition("=")
+            vals[k] = v
+        hash_val = vals.pop("hash", None)
+        if not hash_val:
+            return None
+        data_check = "\n".join(f"{k}={v}" for k, v in sorted(vals.items()))
+        secret = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+        computed = hmac.new(secret, data_check.encode(), hashlib.sha256).hexdigest()
+        if hmac.compare_digest(computed, hash_val):
+            import urllib.parse
+            return {k: urllib.parse.unquote(v) for k, v in vals.items()}
+    except Exception:
+        pass
+    return None
+
+
+@web_app.get("/mini", response_class=HTMLResponse)
+async def mini_app_page(request: Request):
+    return templates.TemplateResponse(request, "mini.html")
+
+
+@web_app.get("/api/mini/init")
+async def api_mini_init(request: Request):
+    """Dashboard stats for mini app (requires X-Mini-Token or returns limited data)."""
+    token = request.headers.get("X-Mini-Token")
+    if not token or token not in _mini_sessions:
+        raise HTTPException(401, "Unauthorized")
+    dash = await api_dashboard()
+    # Revenue 7d
+    now = datetime.utcnow()
+    rev_rows = (await async_session() if False else None)
+    async with async_session() as session:
+        rev_7d = []
+        for i in range(6, -1, -1):
+            d = (now - timedelta(days=i)).date()
+            rub = await session.scalar(
+                select(func.coalesce(func.sum(ResellerTransaction.amount), 0))
+                .where(
+                    ResellerTransaction.type == "payment",
+                    func.date(ResellerTransaction.created_at) == d
+                )
+            )
+            rev_7d.append({"date": d.strftime("%d.%m"), "rub": float(rub or 0)})
+        # Revenue periods
+        today = now.date()
+        week_start = today - timedelta(days=today.weekday())
+        month_start = today.replace(day=1)
+        rev_today = await session.scalar(
+            select(func.coalesce(func.sum(ResellerTransaction.amount), 0))
+            .where(ResellerTransaction.type == "payment", func.date(ResellerTransaction.created_at) == today)
+        )
+        rev_week = await session.scalar(
+            select(func.coalesce(func.sum(ResellerTransaction.amount), 0))
+            .where(ResellerTransaction.type == "payment", ResellerTransaction.created_at >= week_start)
+        )
+        rev_month = await session.scalar(
+            select(func.coalesce(func.sum(ResellerTransaction.amount), 0))
+            .where(ResellerTransaction.type == "payment", ResellerTransaction.created_at >= month_start)
+        )
+    return {
+        "stats": {
+            "total_users": dash["stats"]["total_users"],
+            "active_users": dash["stats"]["active_users"],
+            "online_now": dash["stats"]["online_now"],
+            "revenue_today": float(rev_today or 0),
+        },
+        "revenue_7d": rev_7d,
+        "revenue_week": float(rev_week or 0),
+        "revenue_month": float(rev_month or 0),
+        "recent_alerts": dash["recent_alerts"],
+    }
+
+
+@web_app.post("/api/mini/verify")
+async def api_mini_verify(request: Request):
+    """Verify Telegram WebApp initData and issue a mini-session token."""
+    data = await request.json()
+    init_data = data.get("init_data", "")
+    parsed = _validate_init_data(init_data)
+    if not parsed:
+        raise HTTPException(401, "Invalid initData")
+    import secrets
+    token = secrets.token_hex(32)
+    import json as _json
+    try:
+        user_obj = _json.loads(parsed.get("user", "{}"))
+    except Exception:
+        user_obj = {}
+    _mini_sessions[token] = {
+        "user_id": user_obj.get("id"),
+        "username": user_obj.get("username", ""),
+        "first_name": user_obj.get("first_name", ""),
+    }
+    return {"ok": True, "token": token}
+
+
 async def push_dashboard_updates():
     """Background task — push updates to connected WebSocket clients."""
     while True:
@@ -1898,3 +2019,92 @@ async def push_dashboard_updates():
 async def on_startup():
     """Run on app startup."""
     await ensure_default_admin()
+    await server_manager.start_health_checker()
+
+
+# ---------------------------------------------------------------------------
+# API routes — Servers
+# ---------------------------------------------------------------------------
+
+@web_app.get("/api/servers")
+async def api_servers_list():
+    servers = await server_manager.get_all_servers()
+    return [{
+        "id": s.id,
+        "name": s.name,
+        "marzban_url": s.marzban_url,
+        "marzban_username": s.marzban_username,
+        "is_active": s.is_active,
+        "is_master": s.is_master,
+        "country": s.country,
+        "city": s.city,
+        "ip_address": s.ip_address,
+        "max_users": s.max_users,
+        "current_users": s.current_users,
+        "total_bandwidth": s.total_bandwidth,
+        "status": s.status,
+        "last_check_at": s.last_check_at.isoformat() if s.last_check_at else None,
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+    } for s in servers]
+
+
+@web_app.post("/api/servers")
+async def api_servers_create(request: Request):
+    data = await request.json()
+    name = data.get("name", "").strip()
+    url = data.get("marzban_url", "").strip()
+    username = data.get("marzban_username", "").strip()
+    password = data.get("marzban_password", "")
+    if not all([name, url, username, password]):
+        raise HTTPException(400, "name, url, username, password are required")
+    srv = await server_manager.add_server(
+        name=name,
+        url=url,
+        username=username,
+        password=password,
+        country=data.get("country"),
+        city=data.get("city"),
+        ip_address=data.get("ip_address"),
+        max_users=int(data["max_users"]) if data.get("max_users") else None,
+        is_master=bool(data.get("is_master", False)),
+    )
+    return {"id": srv.id, "ok": True}
+
+
+@web_app.put("/api/servers/{server_id}")
+async def api_servers_update(server_id: int, request: Request):
+    data = await request.json()
+    fields = {}
+    for key in ["name", "marzban_url", "marzban_username", "marzban_password",
+                "country", "city", "ip_address", "max_users", "is_master", "is_active"]:
+        if key in data:
+            fields[key] = data[key]
+    srv = await server_manager.update_server(server_id, **fields)
+    if not srv:
+        raise HTTPException(404, "Server not found")
+    return {"ok": True}
+
+
+@web_app.delete("/api/servers/{server_id}")
+async def api_servers_delete(server_id: int):
+    ok = await server_manager.remove_server(server_id)
+    if not ok:
+        raise HTTPException(404, "Server not found")
+    return {"ok": True}
+
+
+@web_app.get("/api/servers/{server_id}/stats")
+async def api_server_stats(server_id: int):
+    stats = await server_manager.get_server_stats(server_id)
+    if not stats:
+        raise HTTPException(404, "Server not found")
+    return stats
+
+
+@web_app.post("/api/servers/{server_id}/health-check")
+async def api_server_health_check(server_id: int):
+    srv = await server_manager.get_server(server_id)
+    if not srv:
+        raise HTTPException(404, "Server not found")
+    result = await server_manager.check_server_health(srv)
+    return {"id": server_id, "name": srv.name, **result}

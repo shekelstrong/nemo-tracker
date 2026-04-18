@@ -87,11 +87,18 @@ PUBLIC_PREFIXES = ("/static/",)
 
 
 async def auth_middleware(request: Request, call_next):
-    """Check JWT cookie on all routes except public ones."""
+    """Check JWT cookie or X-Mini-Token on all routes except public ones."""
     path = request.url.path
 
     # Allow public paths
     if path in PUBLIC_PATHS or any(path.startswith(p) for p in PUBLIC_PREFIXES):
+        return await call_next(request)
+
+    # Check X-Mini-Token (Telegram Mini App auth)
+    from src.api.web import _mini_sessions
+    mini_token = request.headers.get("X-Mini-Token")
+    if mini_token and mini_token in _mini_sessions:
+        request.state.user = f"tg:{_mini_sessions[mini_token].get('username', 'unknown')}"
         return await call_next(request)
 
     token = request.cookies.get(COOKIE_NAME)
