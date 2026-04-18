@@ -1,4 +1,4 @@
-"""Configuration management for Nemo Tracker."""
+"""Nemo Tracker — Configuration (DEVELOPMENT — local only, DO NOT COMMIT .env)"""
 
 from pydantic_settings import BaseSettings
 from typing import List
@@ -6,8 +6,8 @@ from typing import List
 
 class Settings(BaseSettings):
     # Marzban
-    marzban_url: str = "http://localhost:8000"
-    marzban_admin_username: str = "admin"
+    marzban_url: str = "https://vpn.dealflow.bond"
+    marzban_admin_username: str = "nedopekin"
     marzban_admin_password: str = ""
 
     # Database

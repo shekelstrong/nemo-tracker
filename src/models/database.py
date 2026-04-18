@@ -1,0 +1,89 @@
+"""Nemo Tracker — Database models (SQLAlchemy 2.0 async)."""
+
+from datetime import datetime
+from typing import Optional
+
+from sqlalchemy import (
+    Boolean, DateTime, Float, Integer, String, Text, BigInteger, Date, Index
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.sql import func
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class User(Base):
+    """Кэш пользователей из Marzban."""
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), default="active")  # active, disabled, expired, limited
+    used_traffic: Mapped[int] = mapped_column(BigInteger, default=0)  # bytes
+    data_limit: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)  # bytes
+    online_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    expire: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    tier: Mapped[int] = mapped_column(Integer, default=0)
+    device_count: Mapped[int] = mapped_column(Integer, default=0)
+    gb_limit: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    last_synced: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Флаг: был ли онлайн при предыдущей синхронизации
+    was_online: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    def traffic_usage_percent(self) -> Optional[float]:
+        if self.data_limit and self.data_limit > 0:
+            return (self.used_traffic / self.data_limit) * 100
+        return None
+
+
+class Connection(Base):
+    """История подключений/отключений."""
+    __tablename__ = "connections"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    online_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    offline_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_min: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    node_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+
+
+class IPHistory(Base):
+    """История IP — заглушка, пополнять позже по логам."""
+    __tablename__ = "ip_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    node_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+
+
+class Analytics(Base):
+    """Агрегированная статистика за день."""
+    __tablename__ = "analytics"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    date: Mapped[datetime] = mapped_column(Date, unique=True, nullable=False, index=True)
+    total_users: Mapped[int] = mapped_column(Integer, default=0)
+    active_users: Mapped[int] = mapped_column(Integer, default=0)
+    online_users: Mapped[int] = mapped_column(Integer, default=0)
+    total_traffic_gb: Mapped[float] = mapped_column(Float, default=0.0)
+    new_users: Mapped[int] = mapped_column(Integer, default=0)
+    expired_users: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class Alert(Base):
+    """Уведомления и предупреждения."""
+    __tablename__ = "alerts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
+    alert_type: Mapped[str] = mapped_column(String(64), nullable=False)  # new_user, traffic_80, expiring_3d, online, offline
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    resolved: Mapped[bool] = mapped_column(Boolean, default=False)
