@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import (
-    Boolean, DateTime, Float, Integer, String, Text, BigInteger, Date, Index
+    Boolean, DateTime, Float, Integer, String, Text, BigInteger, Date, Index, JSON
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -140,6 +140,27 @@ class PromoCode(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class TariffPlan(Base):
+    """Тарифные планы."""
+    __tablename__ = "tariff_plans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    name_en: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    duration_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    price_rub: Mapped[float] = mapped_column(Float, nullable=False)
+    price_usdt: Mapped[float] = mapped_column(Float, nullable=False)
+    gb_limit: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # null = безлимит
+    device_limit: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # null = безлимит
+    tier: Mapped[int] = mapped_column(Integer, default=0)  # 0=standard, 1=premium
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description_en: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    features: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Alert(Base):

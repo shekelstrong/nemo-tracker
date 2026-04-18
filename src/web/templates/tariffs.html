@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% block topbar_title %}nav.tariffs{% endblock %}
+
+{% block content %}
+<div class="page-container">
+  <!-- Stats -->
+  <div class="stats-row" id="statsRow">
+    <div class="stat-card">
+      <div class="stat-value" id="statTotal">0</div>
+      <div class="stat-label" data-i18n="tariff.stat_total">Total Plans</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="statActive">0</div>
+      <div class="stat-label" data-i18n="tariff.stat_active">Active</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="statPriceRange">—</div>
+      <div class="stat-label" data-i18n="tariff.stat_range">Price Range</div>
+    </div>
+  </div>
+
+  <!-- Add button -->
+  <div style="margin-bottom:20px;display:flex;gap:10px;align-items:center;">
+    <button class="btn btn-primary" onclick="openModal()">
+      <i class="fas fa-plus"></i> <span data-i18n="tariff.add_btn">Add Plan</span>
+    </button>
+    <button class="btn btn-secondary" onclick="saveOrder()" id="saveOrderBtn" style="display:none">
+      <i class="fas fa-sort"></i> <span data-i18n="tariff.save_order">Save Order</span>
+    </button>
+  </div>
+
+  <!-- Tariff cards -->
+  <div id="tariffList" class="tariff-grid"></div>
+
+  <!-- Empty state -->
+  <div id="emptyState" style="display:none;text-align:center;padding:60px 20px;color:var(--text-muted)">
+    <i class="fas fa-tags" style="font-size:48px;margin-bottom:16px;opacity:.3"></i>
+    <p data-i18n="tariff.no_plans">No tariff plans yet</p>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal" style="max-width:560px;width:95%">
+    <div class="modal-header">
+      <h3 id="modalTitle" data-i18n="tariff.create_title">Create Plan</h3>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+      <input type="hidden" id="editId">
+
+      <label data-i18n="tariff.name">Name (RU)</label>
+      <input id="fName" class="form-input" placeholder="Стандарт" style="margin-bottom:12px">
+
+      <label data-i18n="tariff.name_en">Name (EN)</label>
+      <input id="fNameEn" class="form-input" placeholder="Standard" style="margin-bottom:12px">
+
+      <div style="display:flex;gap:12px">
+        <div style="flex:1">
+          <label data-i18n="tariff.duration">Duration (days)</label>
+          <input id="fDuration" type="number" class="form-input" min="1" value="30">
+        </div>
+        <div style="flex:1">
+          <label>Tier</label>
+          <select id="fTier" class="form-input">
+            <option value="0">Standard</option>
+            <option value="1">Premium</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin:12px 0"></div>
+
+      <div style="display:flex;gap:12px">
+        <div style="flex:1">
+          <label data-i18n="tariff.price_rub">Price (₽)</label>
+          <input id="fPriceRub" type="number" class="form-input" step="0.01" value="0">
+        </div>
+        <div style="flex:1">
+          <label data-i18n="tariff.price_usdt">Price (USDT)</label>
+          <input id="fPriceUsdt" type="number" class="form-input" step="0.01" value="0">
+        </div>
+      </div>
+      <div style="margin:12px 0"></div>
+
+      <div style="display:flex;gap:12px;align-items:end">
+        <div style="flex:1">
+          <label data-i18n="tariff.gb_limit">GB Limit</label>
+          <input id="fGbLimit" type="number" class="form-input" step="0.1" placeholder="∞">
+        </div>
+        <div style="flex:1">
+          <label data-i18n="tariff.device_limit">Device Limit</label>
+          <input id="fDeviceLimit" type="number" class="form-input" placeholder="∞">
+        </div>
+      </div>
+      <div style="margin:12px 0"></div>
+
+      <label data-i18n="tariff.description">Description (RU)</label>
+      <textarea id="fDesc" class="form-input" rows="2" style="margin-bottom:12px"></textarea>
+
+      <label data-i18n="tariff.description_en">Description (EN)</label>
+      <textarea id="fDescEn" class="form-input" rows="2" style="margin-bottom:12px"></textarea>
+
+      <label data-i18n="tariff.features">Features</label>
+      <div id="featuresList" style="margin-bottom:8px"></div>
+      <div style="display:flex;gap:8px">
+        <input id="fNewFeature" class="form-input" style="flex:1" placeholder="Add feature...">
+        <button class="btn btn-secondary" onclick="addFeature()" style="white-space:nowrap">
+          <i class="fas fa-plus"></i>
+        </button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()" data-i18n="tariff.cancel">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTariff()" data-i18n="tariff.save">Save</button>
+    </div>
+  </div>
+</div>
+
+<style>
+.tariff-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
+.tariff-card {
+  background:var(--card-bg); border:1px solid var(--border); border-radius:12px; padding:20px;
+  cursor:grab; transition:all .2s; position:relative;
+}
+.tariff-card.dragging { opacity:.5; transform:rotate(2deg); }
+.tariff-card.drag-over { border-color:var(--primary); box-shadow:0 0 0 2px var(--primary); }
+.tariff-card.inactive { opacity:.55; }
+.tariff-badge {
+  display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600;
+  text-transform:uppercase; letter-spacing:.5px;
+}
+.tariff-badge.standard { background:#e3f2fd; color:#1565c0; }
+.tariff-badge.premium { background:#fff3e0; color:#e65100; }
+.tariff-price { font-size:24px; font-weight:700; margin:8px 0; }
+.tariff-meta { color:var(--text-muted); font-size:13px; margin:4px 0; }
+.tariff-features { margin-top:10px; }
+.tariff-features li { font-size:13px; margin:3px 0; color:var(--text-secondary); }
+.tariff-actions { margin-top:14px; display:flex; gap:6px; flex-wrap:wrap; }
+.tariff-actions .btn { padding:4px 10px; font-size:12px; }
+</style>
+
+<script>
+let tariffs = [];
+let features = [];
+let dragSrcIdx = null;
+
+function lang() { return localStorage.getItem('nemo_lang') || 'en'; }
+
+async function loadTariffs() {
+  tariffs = await fetch('/api/tariffs').then(r => r.json());
+  render();
+}
+
+function render() {
+  const list = document.getElementById('tariffList');
+  const empty = document.getElementById('emptyState');
+  if (!tariffs.length) {
+    list.innerHTML = '';
+    empty.style.display = 'block';
+    document.getElementById('statTotal').textContent = '0';
+    document.getElementById('statActive').textContent = '0';
+    document.getElementById('statPriceRange').textContent = '—';
+    return;
+  }
+  empty.style.display = 'none';
+  const active = tariffs.filter(t => t.is_active);
+  const prices = tariffs.map(t => t.price_rub).filter(Boolean);
+  document.getElementById('statTotal').textContent = tariffs.length;
+  document.getElementById('statActive').textContent = active.length;
+  document.getElementById('statPriceRange').textContent = prices.length
+    ? `${Math.min(...prices)}–${Math.max(...prices)} ₽`
+    : '—';
+
+  list.innerHTML = tariffs.map((t, idx) => {
+    const tierClass = t.tier ? 'premium' : 'standard';
+    const tierLabel = t.tier ? 'Premium' : 'Standard';
+    const name = lang() === 'ru' ? (t.name || t.name_en) : (t.name_en || t.name);
+    const desc = lang() === 'ru' ? (t.description || t.description_en) : (t.description_en || t.description);
+    const feats = (t.features || []);
+    return `
+    <div class="tariff-card ${t.is_active ? '' : 'inactive'}" draggable="true"
+         data-idx="${idx}"
+         ondragstart="onDragStart(event,${idx})"
+         ondragover="onDragOver(event,${idx})"
+         ondrop="onDrop(event,${idx})"
+         ondragend="onDragEnd(event)">
+      <div style="display:flex;justify-content:space-between;align-items:start">
+        <div>
+          <span class="tariff-badge ${tierClass}">${tierLabel}</span>
+          <h3 style="margin:8px 0 4px">${esc(name)}</h3>
+        </div>
+        ${!t.is_active ? '<span style="color:var(--text-muted);font-size:12px" data-i18n="tariff.inactive">Inactive</span>' : ''}
+      </div>
+      <div class="tariff-price">${t.price_rub} ₽ <span style="font-size:14px;color:var(--text-muted)">/ ${t.price_usdt} USDT</span></div>
+      <div class="tariff-meta"><i class="fas fa-clock"></i> ${t.duration_days} <span data-i18n="tariff.days">days</span></div>
+      <div class="tariff-meta"><i class="fas fa-database"></i> ${t.gb_limit != null ? t.gb_limit + ' GB' : t_(lang() === 'ru' ? 'tariff.unlimited' : 'tariff.unlimited')}</div>
+      <div class="tariff-meta"><i class="fas fa-mobile-alt"></i> ${t.device_limit != null ? t.device_limit : t_('tariff.unlimited')}</div>
+      ${desc ? `<div class="tariff-meta" style="margin-top:6px">${esc(desc)}</div>` : ''}
+      ${feats.length ? `<ul class="tariff-features">${feats.map(f => `<li><i class="fas fa-check" style="color:var(--primary);margin-right:4px"></i>${esc(f)}</li>`).join('')}</ul>` : ''}
+      <div class="tariff-actions">
+        <button class="btn btn-secondary" onclick="editTariff(${t.id})" data-i18n="tariff.edit">Edit</button>
+        <button class="btn btn-secondary" onclick="toggleTariff(${t.id})">${t.is_active ? t_('tariff.deactivate') : t_('tariff.activate')}</button>
+        <button class="btn btn-danger" onclick="deleteTariff(${t.id})" data-i18n="tariff.delete">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function t_(key) { return (typeof T !== 'undefined' && T[key]) ? (T[key][lang()] || T[key].en) : key; }
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function openModal(tariff = null) {
+  document.getElementById('editId').value = tariff ? tariff.id : '';
+  document.getElementById('fName').value = tariff ? tariff.name : '';
+  document.getElementById('fNameEn').value = tariff ? (tariff.name_en || '') : '';
+  document.getElementById('fDuration').value = tariff ? tariff.duration_days : 30;
+  document.getElementById('fPriceRub').value = tariff ? tariff.price_rub : 0;
+  document.getElementById('fPriceUsdt').value = tariff ? tariff.price_usdt : 0;
+  document.getElementById('fGbLimit').value = tariff ? (tariff.gb_limit || '') : '';
+  document.getElementById('fDeviceLimit').value = tariff ? (tariff.device_limit || '') : '';
+  document.getElementById('fTier').value = tariff ? tariff.tier : 0;
+  document.getElementById('fDesc').value = tariff ? (tariff.description || '') : '';
+  document.getElementById('fDescEn').value = tariff ? (tariff.description_en || '') : '';
+  features = tariff ? [...(tariff.features || [])] : [];
+  renderFeatures();
+  document.getElementById('modalTitle').textContent = tariff
+    ? t_('tariff.edit_title') : t_('tariff.create_title');
+  document.getElementById('modalOverlay').style.display = 'flex';
+}
+
+function closeModal() { document.getElementById('modalOverlay').style.display = 'none'; }
+
+function renderFeatures() {
+  document.getElementById('featuresList').innerHTML = features.map((f, i) =>
+    `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
+       <input class="form-input" value="${esc(f)}" onchange="features[${i}]=this.value" style="flex:1">
+       <button class="btn btn-danger" onclick="features.splice(${i},1);renderFeatures()" style="padding:4px 8px"><i class="fas fa-times"></i></button>
+     </div>`
+  ).join('');
+}
+
+function addFeature() {
+  const inp = document.getElementById('fNewFeature');
+  if (inp.value.trim()) { features.push(inp.value.trim()); inp.value = ''; renderFeatures(); }
+}
+
+async function saveTariff() {
+  const id = document.getElementById('editId').value;
+  const payload = {
+    name: document.getElementById('fName').value,
+    name_en: document.getElementById('fNameEn').value || null,
+    duration_days: parseInt(document.getElementById('fDuration').value),
+    price_rub: parseFloat(document.getElementById('fPriceRub').value),
+    price_usdt: parseFloat(document.getElementById('fPriceUsdt').value),
+    gb_limit: document.getElementById('fGbLimit').value ? parseFloat(document.getElementById('fGbLimit').value) : null,
+    device_limit: document.getElementById('fDeviceLimit').value ? parseInt(document.getElementById('fDeviceLimit').value) : null,
+    tier: parseInt(document.getElementById('fTier').value),
+    description: document.getElementById('fDesc').value || null,
+    description_en: document.getElementById('fDescEn').value || null,
+    features: features,
+  };
+  if (!payload.name) return alert(t_('tariff.err_name'));
+  try {
+    if (id) {
+      await fetch(`/api/tariffs/${id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    } else {
+      await fetch('/api/tariffs', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    }
+    closeModal();
+    await loadTariffs();
+  } catch (e) { alert(t_('tariff.err_save') + ': ' + e.message); }
+}
+
+async function editTariff(id) {
+  const t = tariffs.find(x => x.id === id);
+  if (t) openModal(t);
+}
+
+async function toggleTariff(id) {
+  await fetch(`/api/tariffs/${id}/toggle`, { method: 'POST' });
+  await loadTariffs();
+}
+
+async function deleteTariff(id) {
+  if (!confirm(t_('tariff.confirm_delete'))) return;
+  await fetch(`/api/tariffs/${id}`, { method: 'DELETE' });
+  await loadTariffs();
+}
+
+// Drag and drop
+function onDragStart(e, idx) {
+  dragSrcIdx = idx;
+  e.target.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+function onDragOver(e, idx) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('.tariff-card').forEach(c => c.classList.remove('drag-over'));
+  e.currentTarget.classList.add('drag-over');
+}
+function onDrop(e, idx) {
+  e.preventDefault();
+  if (dragSrcIdx === null || dragSrcIdx === idx) return;
+  const moved = tariffs.splice(dragSrcIdx, 1)[0];
+  tariffs.splice(idx, 0, moved);
+  render();
+  document.getElementById('saveOrderBtn').style.display = 'inline-flex';
+}
+function onDragEnd(e) {
+  dragSrcIdx = null;
+  document.querySelectorAll('.tariff-card').forEach(c => {
+    c.classList.remove('dragging', 'drag-over');
+  });
+}
+
+async function saveOrder() {
+  await fetch('/api/tariffs/reorder', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ order: tariffs.map(t => t.id) }),
+  });
+  document.getElementById('saveOrderBtn').style.display = 'none';
+  await loadTariffs();
+}
+
+loadTariffs();
+</script>
+{% endblock %}

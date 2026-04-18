@@ -40,7 +40,7 @@ from src.core.marzban_client import marzban_client
 from src.core.device_tracker import device_tracker
 from src.core.geoip import get_geo
 from sqlalchemy import select, func, desc, distinct, delete
-from src.models.database import UserIP, PromoCode
+from src.models.database import UserIP, PromoCode, TariffPlan
 
 # ---------------------------------------------------------------------------
 # WebSocket manager
@@ -173,6 +173,11 @@ async def page_geo(request: Request):
 @web_app.get("/promocodes", response_class=HTMLResponse)
 async def page_promocodes(request: Request):
     return templates.TemplateResponse(request, "promocodes.html")
+
+
+@web_app.get("/tariffs", response_class=HTMLResponse)
+async def page_tariffs(request: Request):
+    return templates.TemplateResponse(request, "tariffs.html")
 
 
 @web_app.get("/api/dashboard")
@@ -1236,6 +1241,121 @@ async def api_promocodes_toggle(promo_id: int):
         p.is_active = not p.is_active
         await session.commit()
         return {"ok": True, "is_active": p.is_active}
+
+
+# ---------------------------------------------------------------------------
+# API routes — Tariff Plans
+# ---------------------------------------------------------------------------
+
+@web_app.get("/api/tariffs")
+async def api_tariffs_list():
+    async with async_session() as session:
+        rows = (await session.execute(
+            select(TariffPlan).order_by(TariffPlan.sort_order, TariffPlan.id)
+        )).scalars().all()
+        return [{
+            "id": t.id,
+            "name": t.name,
+            "name_en": t.name_en,
+            "duration_days": t.duration_days,
+            "price_rub": t.price_rub,
+            "price_usdt": t.price_usdt,
+            "gb_limit": t.gb_limit,
+            "device_limit": t.device_limit,
+            "tier": t.tier,
+            "is_active": t.is_active,
+            "sort_order": t.sort_order,
+            "description": t.description,
+            "description_en": t.description_en,
+            "features": json.loads(t.features) if t.features else [],
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+        } for t in rows]
+
+
+@web_app.post("/api/tariffs")
+async def api_tariffs_create(request: Request):
+    data = await request.json()
+    async with async_session() as session:
+        t = TariffPlan(
+            name=data["name"],
+            name_en=data.get("name_en"),
+            duration_days=int(data["duration_days"]),
+            price_rub=float(data["price_rub"]),
+            price_usdt=float(data["price_usdt"]),
+            gb_limit=float(data["gb_limit"]) if data.get("gb_limit") else None,
+            device_limit=int(data["device_limit"]) if data.get("device_limit") else None,
+            tier=int(data.get("tier", 0)),
+            is_active=True,
+            sort_order=int(data.get("sort_order", 0)),
+            description=data.get("description"),
+            description_en=data.get("description_en"),
+            features=json.dumps(data.get("features", []), ensure_ascii=False),
+        )
+        session.add(t)
+        await session.commit()
+        await session.refresh(t)
+        return {"id": t.id, "ok": True}
+
+
+@web_app.put("/api/tariffs/{tariff_id}")
+async def api_tariffs_update(tariff_id: int, request: Request):
+    data = await request.json()
+    async with async_session() as session:
+        t = (await session.execute(
+            select(TariffPlan).where(TariffPlan.id == tariff_id)
+        )).scalar_one_or_none()
+        if not t:
+            raise HTTPException(404, "Tariff not found")
+        for field in ["name", "name_en", "duration_days", "price_rub", "price_usdt",
+                      "gb_limit", "device_limit", "tier", "sort_order",
+                      "description", "description_en"]:
+            if field in data:
+                setattr(t, field, data[field])
+        if "features" in data:
+            t.features = json.dumps(data["features"], ensure_ascii=False)
+        await session.commit()
+        return {"ok": True}
+
+
+@web_app.delete("/api/tariffs/{tariff_id}")
+async def api_tariffs_delete(tariff_id: int):
+    async with async_session() as session:
+        t = (await session.execute(
+            select(TariffPlan).where(TariffPlan.id == tariff_id)
+        )).scalar_one_or_none()
+        if not t:
+            raise HTTPException(404, "Tariff not found")
+        await session.delete(t)
+        await session.commit()
+        return {"ok": True}
+
+
+@web_app.post("/api/tariffs/{tariff_id}/toggle")
+async def api_tariffs_toggle(tariff_id: int):
+    async with async_session() as session:
+        t = (await session.execute(
+            select(TariffPlan).where(TariffPlan.id == tariff_id)
+        )).scalar_one_or_none()
+        if not t:
+            raise HTTPException(404, "Tariff not found")
+        t.is_active = not t.is_active
+        await session.commit()
+        return {"ok": True, "is_active": t.is_active}
+
+
+@web_app.post("/api/tariffs/reorder")
+async def api_tariffs_reorder(request: Request):
+    data = await request.json()
+    order = data.get("order", [])  # list of tariff ids in new order
+    async with async_session() as session:
+        for idx, tid in enumerate(order):
+            t = (await session.execute(
+                select(TariffPlan).where(TariffPlan.id == tid)
+            )).scalar_one_or_none()
+            if t:
+                t.sort_order = idx
+        await session.commit()
+    return {"ok": True}
 
 
 async def push_dashboard_updates():
