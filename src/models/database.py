@@ -52,15 +52,22 @@ class Connection(Base):
     node_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
 
 
-class IPHistory(Base):
-    """История IP — заглушка, пополнять позже по логам."""
-    __tablename__ = "ip_history"
+class UserIP(Base):
+    """Уникальные IP пользователей — для device tracking."""
+    __tablename__ = "user_ips"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     username: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
-    ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
-    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    node_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    ip: Mapped[str] = mapped_column(String(45), nullable=False)
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    source: Mapped[str] = mapped_column(String(16), default="sub")  # 'sub' or 'xray'
+    geo_country: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    geo_city: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+
+    __table_args__ = (
+        Index('ix_user_ips_username_ip', 'username', 'ip', unique=True),
+    )
 
 
 class Analytics(Base):
