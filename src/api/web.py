@@ -368,19 +368,33 @@ async def api_create_user(request: Request):
 @web_app.put("/api/users/{username}")
 async def api_update_user(username: str, request: Request):
     data = await request.json()
+    
+    # Update device_count in Nemo Tracker DB
+    if "device_count" in data:
+        async with async_session() as session:
+            user = (await session.execute(
+                select(DBUser).where(DBUser.username == username)
+            )).scalar_one_or_none()
+            if user:
+                user.device_count = int(data["device_count"])
+                await session.commit()
+                # Update device_tracker limits
+                from src.core.device_tracker import device_tracker
+                await device_tracker.set_device_limit(username, int(data["device_count"]))
+    
     payload = {}
     if "data_limit_gb" in data:
         payload["data_limit"] = int(data["data_limit_gb"] * 1024**3) if data["data_limit_gb"] else 0
     if "expire" in data:
         payload["expire"] = int(data["expire"]) if data["expire"] else 0
-    if "ip_limit" in data:
-        payload["max_ip"] = data["ip_limit"]
     if "note" in data:
         payload["note"] = data["note"]
     if "status" in data:
         payload["status"] = data["status"]
     try:
-        return await marzban_client.update_user(username, **payload)
+        if payload:
+            return await marzban_client.update_user(username, **payload)
+        return {"ok": True}
     except Exception as e:
         logger.error(f"Update user error: {e}")
         raise HTTPException(500, str(e))

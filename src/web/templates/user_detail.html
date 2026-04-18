@@ -123,9 +123,9 @@ function closeEditModal() { document.getElementById('editModal').classList.remov
 async function saveUser() {
   const data_limit_gb = parseFloat(document.getElementById('editDataLimit').value) || 0;
   const expireStr = document.getElementById('editExpire').value;
-  const ip_limit = parseInt(document.getElementById('editDeviceLimit').value) || 0;
+  const device_count = parseInt(document.getElementById('editDeviceLimit').value) || 0;
   const note = document.getElementById('editNote').value.trim();
-  const payload = { data_limit_gb: data_limit_gb || null, ip_limit: ip_limit || null, note };
+  const payload = { data_limit_gb: data_limit_gb || null, device_count, note };
   if (expireStr) payload.expire = Math.floor(new Date(expireStr).getTime() / 1000);
   else payload.expire = 0;
   try {

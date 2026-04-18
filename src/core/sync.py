@@ -84,9 +84,6 @@ async def sync_all_users() -> Tuple[int, int, List[str]]:
             all_tags = [tag for tags in inbounds.values() for tag in tags]
             tier = 1 if "vless-reality-whitelist" in all_tags else 0
 
-            # Лимит устройств из Marzban
-            ip_limit = udata.get("ip_limit") or 0
-
             # Проверяем есть ли юзер в кэше
             result = await session.execute(select(User).where(User.username == username))
             db_user = result.scalar_one_or_none()
@@ -101,7 +98,6 @@ async def sync_all_users() -> Tuple[int, int, List[str]]:
                     expire=expire,
                     gb_limit=gb_limit,
                     tier=tier,
-                    device_count=ip_limit,
                     was_online=_is_online(online_at),
                     last_synced=datetime.now(timezone.utc),
                 )
@@ -115,7 +111,7 @@ async def sync_all_users() -> Tuple[int, int, List[str]]:
                 db_user.expire = expire
                 db_user.gb_limit = gb_limit
                 db_user.tier = tier
-                db_user.device_count = ip_limit
+                # НЕ обновляем device_count — управляется через Nemo Tracker UI
                 db_user.last_synced = datetime.now(timezone.utc)
 
         await session.commit()
