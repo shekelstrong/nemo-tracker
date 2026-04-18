@@ -183,6 +183,29 @@ async def page_servers(request: Request):
 # API routes — REAL DATA
 # ---------------------------------------------------------------------------
 
+@web_app.get("/forecasting", response_class=HTMLResponse)
+async def page_forecasting(request: Request):
+    return templates.TemplateResponse(request, "forecasting.html")
+
+
+@web_app.get("/api/forecast/churn")
+async def api_forecast_churn():
+    from src.core.forecasting import predict_churn
+    return await predict_churn()
+
+
+@web_app.get("/api/forecast/resources")
+async def api_forecast_resources():
+    from src.core.forecasting import predict_resource_exhaustion
+    return await predict_resource_exhaustion()
+
+
+@web_app.get("/api/forecast/revenue")
+async def api_forecast_revenue():
+    from src.core.forecasting import predict_revenue
+    return await predict_revenue()
+
+
 @web_app.get("/auto-renewal", response_class=HTMLResponse)
 async def page_auto_renewal(request: Request):
     return templates.TemplateResponse(request, "auto_renewal.html")

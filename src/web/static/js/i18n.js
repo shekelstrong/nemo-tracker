@@ -391,6 +391,19 @@ const T = {
   "fin.new_this_month": { en: "New This Month", ru: "Новые за месяц" },
   "fin.subscribers": { en: "subscribers", ru: "подписчиков" },
 
+  // Forecasting
+  "nav.forecasting": { en: "📈 Forecasting", ru: "📈 Прогнозирование" },
+  "forecasting.title": { en: "Forecasting & Analytics", ru: "Прогнозирование и аналитика" },
+  "fc.churn_title": { en: "🔍 Churn Risk", ru: "🔍 Риск оттока" },
+  "fc.username": { en: "Username", ru: "Пользователь" },
+  "fc.expire": { en: "Expire", ru: "Истекает" },
+  "fc.days_inactive": { en: "Days Inactive", ru: "Дней неактивен" },
+  "fc.churn_prob": { en: "Churn Probability", ru: "Вероятность оттока" },
+  "fc.risk": { en: "Risk", ru: "Риск" },
+  "fc.no_churn": { en: "No churn risk detected", ru: "Риск оттока не обнаружен" },
+  "fc.resource_title": { en: "💾 Resource Forecast", ru: "💾 Прогноз ресурсов" },
+  "fc.revenue_title": { en: "💰 Revenue Forecast", ru: "💰 Прогноз дохода" },
+
   // Analytics
   "analytics.title": { en: "Traffic Analytics", ru: "Аналитика трафика" },
 

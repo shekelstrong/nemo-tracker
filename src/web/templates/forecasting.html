@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+{% block title %}Forecasting — Nemo Tracker{% endblock %}
+{% block topbar_title %}forecasting.title{% endblock %}
+
+{% block content %}
+
+<!-- Churn Risk Section -->
+<div class="chart-card" style="margin-bottom:24px">
+  <h3 data-i18n="fc.churn_title">🔍 Churn Risk</h3>
+  <div id="churnSummary" style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap"></div>
+  <div style="overflow-x:auto">
+    <table class="data-table" id="churnTable">
+      <thead>
+        <tr>
+          <th data-i18n="fc.username">Username</th>
+          <th data-i18n="fc.expire">Expire</th>
+          <th data-i18n="fc.days_inactive">Days Inactive</th>
+          <th data-i18n="fc.churn_prob">Churn Probability</th>
+          <th data-i18n="fc.risk">Risk</th>
+        </tr>
+      </thead>
+      <tbody id="churnBody"></tbody>
+    </table>
+  </div>
+  <div id="churnNone" style="display:none;padding:20px;text-align:center;color:var(--text-muted)" data-i18n="fc.no_churn">No churn risk detected</div>
+</div>
+
+<!-- Resource Forecast Section -->
+<div class="chart-card" style="margin-bottom:24px">
+  <h3 data-i18n="fc.resource_title">💾 Resource Forecast</h3>
+  <div id="resourceCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px"></div>
+  <div id="resourceRec" style="padding:12px;border-radius:8px;background:var(--bg-secondary);margin-top:12px;display:none"></div>
+</div>
+
+<!-- Revenue Forecast Section -->
+<div class="chart-card" style="margin-bottom:24px">
+  <h3 data-i18n="fc.revenue_title">💰 Revenue Forecast</h3>
+  <div id="revenueSummary" style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap"></div>
+  <div style="height:350px"><canvas id="chartRevenue"></canvas></div>
+</div>
+
+<script>
+const lang = getLang();
+
+// --- Helpers ---
+function riskBadge(level) {
+  const colors = {high:'#ef4444',medium:'#f59e0b',low:'#22c55e'};
+  const labels = {
+    high: lang==='ru'?'Высокий':'High',
+    medium: lang==='ru'?'Средний':'Medium',
+    low: lang==='ru'?'Низкий':'Low'
+  };
+  return `<span style="background:${colors[level]||'#666'};color:#fff;padding:2px 10px;border-radius:12px;font-size:12px">${labels[level]||level}</span>`;
+}
+
+function probBar(p) {
+  const color = p>=0.6?'#ef4444':p>=0.3?'#f59e0b':'#22c55e';
+  return `<div style="display:flex;align-items:center;gap:8px">
+    <div style="width:80px;height:8px;background:var(--bg-secondary);border-radius:4px;overflow:hidden">
+      <div style="width:${p*100}%;height:100%;background:${color};border-radius:4px"></div>
+    </div>
+    <span>${Math.round(p*100)}%</span>
+  </div>`;
+}
+
+function statCard(label, value, extra) {
+  return `<div style="background:var(--bg-secondary);border-radius:10px;padding:16px;flex:1;min-width:140px">
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">${label}</div>
+    <div style="font-size:22px;font-weight:700">${value}</div>
+    ${extra?`<div style="font-size:12px;color:var(--text-muted);margin-top:4px">${extra}</div>`:''}
+  </div>`;
+}
+
+// --- Churn ---
+async function loadChurn() {
+  try {
+    const data = await fetch('/api/forecast/churn').then(r=>r.json());
+    const tbody = document.getElementById('churnBody');
+    const summary = document.getElementById('churnSummary');
+
+    if (!data.length) {
+      document.getElementById('churnNone').style.display = '';
+      document.getElementById('churnTable').style.display = 'none';
+      return;
+    }
+
+    const high = data.filter(d=>d.risk_level==='high').length;
+    const med = data.filter(d=>d.risk_level==='medium').length;
+    const low = data.filter(d=>d.risk_level==='low').length;
+    const totalLbl = lang==='ru'?'Всего в зоне риска':'Total at risk';
+    const highLbl = lang==='ru'?'Высокий':'High';
+    const medLbl = lang==='ru'?'Средний':'Medium';
+    const lowLbl = lang==='ru'?'Низкий':'Low';
+
+    summary.innerHTML = [
+      statCard(totalLbl, data.length),
+      statCard(highLbl, high, '🔴'),
+      statCard(medLbl, med, '🟡'),
+      statCard(lowLbl, low, '🟢'),
+    ].join('');
+
+    tbody.innerHTML = data.map(d=>`<tr>
+      <td><a href="/users/${d.username}">${d.username}</a></td>
+      <td>${d.expire||'—'}</td>
+      <td>${d.days_inactive!==null?d.days_inactive:'—'}</td>
+      <td>${probBar(d.churn_probability)}</td>
+      <td>${riskBadge(d.risk_level)}</td>
+    </tr>`).join('');
+  } catch(e) { console.error('churn error', e); }
+}
+
+// --- Resources ---
+async function loadResources() {
+  try {
+    const data = await fetch('/api/forecast/resources').then(r=>r.json());
+    const cards = document.getElementById('resourceCards');
+    const rec = document.getElementById('resourceRec');
+
+    const cpuLbl = lang==='ru'?'CPU загрузка':'CPU Load';
+    const diskLbl = lang==='ru'?'Диск':'Disk';
+    const bwLbl = lang==='ru'?'Канал':'Bandwidth';
+    const growthLbl = lang==='ru'?'Рост':'Growth';
+    const daysLbl = lang==='ru'?'дней':'days';
+    const perDayLbl = lang==='ru'?'юзеров/день':'users/day';
+    const unlimitedLbl = lang==='ru'?'Не ограничено':'Unlimited';
+
+    function daysCard(label, val) {
+      const display = val!==null&&val!==undefined?`${val} ${daysLbl}`:`${unlimitedLbl}`;
+      const color = val!==null&&val<14?'#ef4444':val!==null&&val<30?'#f59e0b':'#22c55e';
+      return statCard(label, `<span style="color:${val!==null?color:'inherit'}">${display}</span>`);
+    }
+
+    cards.innerHTML = [
+      daysCard(cpuLbl, data.days_until_cpu_full),
+      daysCard(diskLbl, data.days_until_disk_full),
+      daysCard(bwLbl, data.days_until_bw_full),
+      statCard(growthLbl, `+${data.growth_rate} ${perDayLbl}`, `${lang==='ru'?'Текущих':'Current'}: ${data.current_users}`),
+    ].join('');
+
+    if (data.recommendation) {
+      const txt = lang==='ru'?data.recommendation.ru:data.recommendation.en;
+      rec.innerHTML = `<strong>💡 ${txt}</strong>`;
+      rec.style.display = '';
+    }
+  } catch(e) { console.error('resources error', e); }
+}
+
+// --- Revenue ---
+async function loadRevenue() {
+  try {
+    const data = await fetch('/api/forecast/revenue').then(r=>r.json());
+    const summary = document.getElementById('revenueSummary');
+
+    const forecast7Lbl = lang==='ru'?'Прогноз 7 дней':'7-day Forecast';
+    const forecast30Lbl = lang==='ru'?'Прогноз 30 дней':'30-day Forecast';
+    const trendLbl = lang==='ru'?'Тренд':'Trend';
+
+    const trendEmoji = data.trend_direction;
+    const trendTxt = data.trend==='growing'?(lang==='ru'?'Рост':'Growing'):
+                     data.trend==='declining'?(lang==='ru'?'Падение':'Declining'):
+                     (lang==='ru'?'Стабильно':'Stable');
+
+    summary.innerHTML = [
+      statCard(forecast7Lbl, `${data.total_7d.toLocaleString()} ₽`),
+      statCard(forecast30Lbl, `${data.total_30d.toLocaleString()} ₽`),
+      statCard(trendLbl, `${trendEmoji} ${trendTxt}`, `${lang==='ru'?'+/день':'±/day'}: ${data.slope_per_day} ₽`),
+    ].join('');
+
+    // Chart
+    const labels = [];
+    const actual = [];
+    const forecast = [];
+
+    // actual data
+    (data.actual||[]).forEach(d => {
+      labels.push(d.date);
+      actual.push(d.value);
+      forecast.push(null);
+    });
+
+    // forecast data — first point overlaps last actual
+    const forecastData = new Array(actual.length).fill(null);
+    (data.daily_forecast||[]).forEach((d,i) => {
+      labels.push(d.date);
+      actual.push(null);
+      forecastData.push(d.value);
+    });
+    // connect lines
+    if (actual.length > 0 && data.daily_forecast && data.daily_forecast.length > 0) {
+      forecastData[actual.length - 1] = actual[actual.length - 1];
+    }
+
+    new Chart(document.getElementById('chartRevenue'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: lang==='ru'?'Факт':'Actual',
+            data: actual,
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59,130,246,0.1)',
+            fill: true,
+            tension: 0.3,
+            spanGaps: false,
+          },
+          {
+            label: lang==='ru'?'Прогноз':'Forecast',
+            data: forecastData,
+            borderColor: '#f59e0b',
+            borderDash: [6, 4],
+            backgroundColor: 'rgba(245,158,11,0.1)',
+            fill: true,
+            tension: 0.3,
+            spanGaps: false,
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top' },
+        },
+        scales: {
+          y: { beginAtZero: true, title: { display: true, text: '₽' } },
+          x: { ticks: { maxTicksLimit: 15 } }
+        }
+      }
+    });
+  } catch(e) { console.error('revenue error', e); }
+}
+
+// --- Init ---
+loadChurn();
+loadResources();
+loadRevenue();
+</script>
+
+{% endblock %}
