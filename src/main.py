@@ -11,14 +11,22 @@ from src.core.analytics import calculate_daily_stats
 from src.core.alerting import (
     check_new_users, check_online_status, check_traffic_limits, check_expiring_users
 )
-from src.core.log_reader import log_reader
+
 from src.core.device_tracker import device_tracker
+from src.core.log_reader import LogStreamReader as XrayLogReader
+from src.core.auto_renewal import check_renewals, send_reminder
+
+log_reader = XrayLogReader()
 
 
 # Интервалы в секундах
 SYNC_INTERVAL = 60       # Синхронизация + detect_changes
 ANALYTICS_INTERVAL = 3600  # Каждый час
 ALERTS_INTERVAL = 300      # Проверка лимитов/истечения каждые 5 мин
+
+
+AUTO_RENEWAL_INTERVAL = 21600  # Every 6 hours
+AUTO_RENEWAL_REMINDER_INTERVAL = 86400  # Reminders every 24h
 
 
 async def _run_periodically(coro_func, interval: int, name: str):
@@ -64,6 +72,8 @@ async def main():
         asyncio.create_task(_run_periodically(_run_analytics, ANALYTICS_INTERVAL, "analytics")),
         asyncio.create_task(_run_periodically(_run_alerts, ALERTS_INTERVAL, "alerts")),
         asyncio.create_task(_run_periodically(device_tracker.sync_device_limits_from_marzban, 300, "device_sync")),
+        asyncio.create_task(_run_periodically(_run_auto_renewal, AUTO_RENEWAL_INTERVAL, "auto_renewal")),
+        asyncio.create_task(_run_periodically(send_reminder, AUTO_RENEWAL_REMINDER_INTERVAL, "auto_renewal_reminder")),
         asyncio.create_task(_run_log_reader()),
     ]
 
@@ -94,6 +104,11 @@ async def _run_alerts():
     """Каждые 5 мин: проверка лимитов и истечения подписок."""
     await check_traffic_limits()
     await check_expiring_users(days_before=3)
+
+
+async def _run_auto_renewal():
+    """Каждые 6 часов: проверка автопродлений."""
+    await check_renewals()
 
 
 async def _on_xray_connection(event: dict):

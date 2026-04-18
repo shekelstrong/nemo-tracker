@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block topbar_title %}nav.auto_renewal{% endblock %}
+
+{% block content %}
+<div class="page-container">
+  <!-- Stats -->
+  <div class="stats-row" id="statsRow">
+    <div class="stat-card">
+      <div class="stat-value" id="statTotal">0</div>
+      <div class="stat-label" data-i18n="ar.stat_total">Total</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="statActive">0</div>
+      <div class="stat-label" data-i18n="ar.stat_active">Active</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="statRevenue">0 ₽</div>
+      <div class="stat-label" data-i18n="ar.stat_revenue">Revenue</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="statFailRate">0%</div>
+      <div class="stat-label" data-i18n="ar.stat_fail_rate">Failure Rate</div>
+    </div>
+  </div>
+
+  <!-- Bulk Actions -->
+  <div class="toolbar" style="margin-bottom:16px;display:flex;gap:8px;">
+    <button class="btn btn-primary" onclick="bulkAction('enable')" data-i18n="ar.bulk_enable">Enable Selected</button>
+    <button class="btn btn-secondary" onclick="bulkAction('disable')" data-i18n="ar.bulk_disable">Disable Selected</button>
+  </div>
+
+  <!-- Table -->
+  <div class="table-container">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"></th>
+          <th data-i18n="ar.username">Username</th>
+          <th data-i18n="ar.tariff">Tariff</th>
+          <th data-i18n="ar.next_renewal">Next Renewal</th>
+          <th data-i18n="ar.method">Payment</th>
+          <th data-i18n="ar.status">Status</th>
+          <th data-i18n="ar.fails">Fails</th>
+          <th data-i18n="ar.actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        <tr><td colspan="8" class="text-center" data-i18n="ar.no_records">No auto-renewals yet</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+let renewals = [];
+
+async function loadStats() {
+  try {
+    const s = await fetch('/api/auto-renewal/stats').then(r => r.json());
+    document.getElementById('statTotal').textContent = s.total;
+    document.getElementById('statActive').textContent = s.active;
+    document.getElementById('statRevenue').textContent = s.revenue.toFixed(0) + ' ₽';
+    document.getElementById('statFailRate').textContent = s.failure_rate + '%';
+  } catch (e) { console.error('Stats error', e); }
+}
+
+async function loadRenewals() {
+  try {
+    renewals = await fetch('/api/auto-renewal').then(r => r.json());
+    renderTable();
+  } catch (e) { console.error('Load error', e); }
+}
+
+function formatDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('ru-RU') + ' ' + d.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'});
+}
+
+function methodLabel(m) {
+  const map = { cryptopay: 'CryptoBot', platega: 'Platega', card: 'Card' };
+  return map[m] || m;
+}
+
+function renderTable() {
+  const tbody = document.getElementById('tableBody');
+  if (!renewals.length) {
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center" data-i18n="ar.no_records">${t('ar.no_records')}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = renewals.map(r => `
+    <tr>
+      <td><input type="checkbox" class="row-check" data-username="${r.username}"></td>
+      <td><a href="/users/${r.username}">${r.username}</a></td>
+      <td>${r.tariff_name || '—'}</td>
+      <td>${formatDate(r.next_renewal_at)}</td>
+      <td>${methodLabel(r.payment_method)}</td>
+      <td>
+        <span class="badge ${r.is_active ? 'badge-success' : 'badge-secondary'}">
+          ${r.is_active ? t('ar.active') : t('ar.inactive')}
+        </span>
+      </td>
+      <td>${r.fail_count > 0 ? `<span class="badge badge-danger">${r.fail_count}</span>` : '0'}</td>
+      <td>
+        <button class="btn btn-sm ${r.is_active ? 'btn-secondary' : 'btn-primary'}"
+                onclick="toggleRenewal('${r.username}', ${!r.is_active})">
+          ${r.is_active ? t('ar.disable') : t('ar.enable')}
+        </button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function toggleRenewal(username, enable) {
+  const url = `/api/auto-renewal/${username}/${enable ? 'enable' : 'disable'}`;
+  const opts = enable ? {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({})
+  } : { method: 'POST' };
+  try {
+    const res = await fetch(url, opts);
+    if (!res.ok) throw new Error();
+    showToast(enable ? t('ar.enabled') : t('ar.disabled'));
+    await loadRenewals();
+    await loadStats();
+  } catch {
+    showToast(t('ar.err_toggle'), 'error');
+  }
+}
+
+function toggleSelectAll(el) {
+  document.querySelectorAll('.row-check').forEach(cb => cb.checked = el.checked);
+}
+
+function getSelected() {
+  return [...document.querySelectorAll('.row-check:checked')].map(cb => cb.dataset.username);
+}
+
+async function bulkAction(action) {
+  const selected = getSelected();
+  if (!selected.length) return;
+  for (const username of selected) {
+    await fetch(`/api/auto-renewal/${username}/${action}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({})
+    });
+  }
+  showToast(`Bulk ${action}: ${selected.length}`);
+  await loadRenewals();
+  await loadStats();
+}
+
+// Init
+loadStats();
+loadRenewals();
+</script>
+{% endblock %}

@@ -47,7 +47,7 @@ from src.core.marzban_client import marzban_client
 from src.core.device_tracker import device_tracker
 from src.core.geoip import get_geo
 from sqlalchemy import select, func, desc, distinct, delete
-from src.models.database import UserIP, PromoCode, TariffPlan, Reseller, ResellerTransaction, ResellerUser
+from src.models.database import UserIP, PromoCode, TariffPlan, Reseller, ResellerTransaction, ResellerUser, AutoRenewal
 
 # ---------------------------------------------------------------------------
 # WebSocket manager
@@ -176,6 +176,124 @@ async def page_geo(request: Request):
 # ---------------------------------------------------------------------------
 # API routes — REAL DATA
 # ---------------------------------------------------------------------------
+
+@web_app.get("/auto-renewal", response_class=HTMLResponse)
+async def page_auto_renewal(request: Request):
+    return templates.TemplateResponse(request, "auto_renewal.html")
+
+
+@web_app.get("/api/auto-renewal")
+async def api_auto_renewal_list():
+    async with async_session() as session:
+        rows = (await session.execute(
+            select(AutoRenewal).order_by(desc(AutoRenewal.created_at))
+        )).scalars().all()
+        result = []
+        for ar in rows:
+            tariff = (await session.execute(
+                select(TariffPlan).where(TariffPlan.id == ar.tariff_id)
+            )).scalar_one_or_none() if ar.tariff_id else None
+            result.append({
+                "id": ar.id,
+                "username": ar.username,
+                "telegram_id": ar.telegram_id,
+                "tariff_id": ar.tariff_id,
+                "tariff_name": tariff.name if tariff else None,
+                "payment_method": ar.payment_method,
+                "is_active": ar.is_active,
+                "last_renewed_at": ar.last_renewed_at.isoformat() if ar.last_renewed_at else None,
+                "next_renewal_at": ar.next_renewal_at.isoformat() if ar.next_renewal_at else None,
+                "fail_count": ar.fail_count,
+                "created_at": ar.created_at.isoformat() if ar.created_at else None,
+            })
+        return result
+
+
+@web_app.post("/api/auto-renewal/{username}/enable")
+async def api_auto_renewal_enable(username: str, request: Request):
+    data = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    async with async_session() as session:
+        existing = (await session.execute(
+            select(AutoRenewal).where(AutoRenewal.username == username)
+        )).scalar_one_or_none()
+        if existing:
+            existing.is_active = True
+            existing.fail_count = 0
+            if data.get("tariff_id"):
+                existing.tariff_id = int(data["tariff_id"])
+            if data.get("payment_method"):
+                existing.payment_method = data["payment_method"]
+            if data.get("telegram_id"):
+                existing.telegram_id = int(data["telegram_id"])
+        else:
+            # Get user info for defaults
+            db_user = (await session.execute(
+                select(DBUser).where(DBUser.username == username)
+            )).scalar_one_or_none()
+            tariff_id = int(data["tariff_id"]) if data.get("tariff_id") else None
+            # Calculate next_renewal_at from user expire
+            next_renewal = None
+            if db_user and db_user.expire:
+                tariff = None
+                if tariff_id:
+                    tariff = (await session.execute(
+                        select(TariffPlan).where(TariffPlan.id == tariff_id)
+                    )).scalar_one_or_none()
+                days = tariff.duration_days if tariff else 30
+                if db_user.expire > datetime.utcnow():
+                    next_renewal = db_user.expire - timedelta(days=1)  # renew 1 day before expiry
+                else:
+                    next_renewal = datetime.utcnow() + timedelta(hours=1)
+            ar = AutoRenewal(
+                username=username,
+                telegram_id=int(data["telegram_id"]) if data.get("telegram_id") else None,
+                tariff_id=tariff_id,
+                payment_method=data.get("payment_method", "cryptopay"),
+                is_active=True,
+                next_renewal_at=next_renewal,
+            )
+            session.add(ar)
+        await session.commit()
+        return {"ok": True}
+
+
+@web_app.post("/api/auto-renewal/{username}/disable")
+async def api_auto_renewal_disable(username: str):
+    async with async_session() as session:
+        ar = (await session.execute(
+            select(AutoRenewal).where(AutoRenewal.username == username)
+        )).scalar_one_or_none()
+        if not ar:
+            raise HTTPException(404, "Auto-renewal not found for this user")
+        ar.is_active = False
+        await session.commit()
+        return {"ok": True}
+
+
+@web_app.get("/api/auto-renewal/stats")
+async def api_auto_renewal_stats():
+    async with async_session() as session:
+        total = await session.scalar(select(func.count(AutoRenewal.id)))
+        active = await session.scalar(
+            select(func.count(AutoRenewal.id)).where(AutoRenewal.is_active == True)
+        )
+        failures = await session.scalar(
+            select(func.count(AutoRenewal.id)).where(AutoRenewal.fail_count > 0)
+        )
+        # Revenue from auto-renewals (transactions with description 'Auto-renewal')
+        revenue = await session.scalar(
+            select(func.coalesce(func.sum(Transaction.amount), 0))
+            .where(Transaction.description == "Auto-renewal", Transaction.status == "paid")
+        )
+        return {
+            "total": total or 0,
+            "active": active or 0,
+            "inactive": (total or 0) - (active or 0),
+            "revenue": float(revenue or 0),
+            "failures": failures or 0,
+            "failure_rate": round((failures or 0) / max(total or 1, 1) * 100, 1),
+        }
+
 
 @web_app.get("/promocodes", response_class=HTMLResponse)
 async def page_promocodes(request: Request):

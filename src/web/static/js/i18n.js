@@ -281,6 +281,38 @@ const T = {
   // Footer
   "footer.version": { en: "Nemo Tracker v0.1 · Open Source", ru: "Nemo Tracker v0.1 · Open Source" },
 
+  // Auto-Renewal
+  "nav.auto_renewal": { en: "🔄 Auto-Renewal", ru: "🔄 Автопродление" },
+  "ar.title": { en: "Auto-Renewal", ru: "Автопродление" },
+  "ar.stat_total": { en: "Total", ru: "Всего" },
+  "ar.stat_active": { en: "Active", ru: "Активных" },
+  "ar.stat_revenue": { en: "Revenue", ru: "Выручка" },
+  "ar.stat_failures": { en: "Failures", ru: "Ошибки" },
+  "ar.stat_fail_rate": { en: "Failure Rate", ru: "Процент ошибок" },
+  "ar.username": { en: "Username", ru: "Пользователь" },
+  "ar.tariff": { en: "Tariff", ru: "Тариф" },
+  "ar.next_renewal": { en: "Next Renewal", ru: "Следующее продление" },
+  "ar.method": { en: "Payment", ru: "Оплата" },
+  "ar.status": { en: "Status", ru: "Статус" },
+  "ar.fails": { en: "Fails", ru: "Ошибки" },
+  "ar.actions": { en: "Actions", ru: "Действия" },
+  "ar.active": { en: "Active", ru: "Активно" },
+  "ar.inactive": { en: "Inactive", ru: "Отключено" },
+  "ar.enable": { en: "Enable", ru: "Включить" },
+  "ar.disable": { en: "Disable", ru: "Отключить" },
+  "ar.bulk_enable": { en: "Enable Selected", ru: "Включить выбранные" },
+  "ar.bulk_disable": { en: "Disable Selected", ru: "Отключить выбранные" },
+  "ar.no_records": { en: "No auto-renewals yet", ru: "Автопродлений пока нет" },
+  "ar.enabled": { en: "Auto-renewal enabled", ru: "Автопродление включено" },
+  "ar.disabled": { en: "Auto-renewal disabled", ru: "Автопродление отключено" },
+  "ar.err_toggle": { en: "Toggle error", ru: "Ошибка переключения" },
+  "ar.last_renewed": { en: "Last Renewed", ru: "Последнее продление" },
+  "ar.cryptopay": { en: "CryptoBot", ru: "CryptoBot" },
+  "ar.platega": { en: "Platega", ru: "Платёга" },
+  "ar.card": { en: "Card", ru: "Карта" },
+
+  // Footer (duplicate for section below)
+
   "nav.finance": { en: "Finance", ru: "Финансы" },
   "nav.geo": { en: "Geo Map", ru: "🗺️ Карта" },
   "nav.analytics": { en: "Analytics", ru: "Аналитика" },

@@ -204,6 +204,22 @@ class ResellerUser(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class AutoRenewal(Base):
+    """Автоматическое продление подписок."""
+    __tablename__ = "auto_renewals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    telegram_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    tariff_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # FK to TariffPlan
+    payment_method: Mapped[str] = mapped_column(String(32), default="cryptopay")  # cryptopay/platega/card
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_renewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_renewal_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    fail_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Alert(Base):
     """Уведомления и предупреждения."""
     __tablename__ = "alerts"
