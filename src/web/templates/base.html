@@ -68,6 +68,9 @@
         <button class="topbar-btn" onclick="toggleTheme()" title="Toggle theme">
           <i class="fas fa-moon" id="themeIcon"></i>
         </button>
+        <button class="topbar-btn" onclick="logout()" title="Выйти / Logout" style="margin-left:0.25rem;">
+          <i class="fas fa-sign-out-alt"></i>
+        </button>
       </div>
     </header>
 
@@ -99,6 +102,11 @@
   const origToggleLang = toggleLang;
   toggleLang = function() { origToggleLang(); updateLangLabel(); };
   document.addEventListener('DOMContentLoaded', () => { updateThemeIcon(); updateLangLabel(); });
+
+  async function logout() {
+    await fetch('/api/auth/logout', {method:'POST'});
+    window.location.href = '/login';
+  }
 </script>
 {% block scripts %}{% endblock %}
 </body>

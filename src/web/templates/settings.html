@@ -148,6 +148,68 @@
     <span class="form-hint">Auto-updated every 10 minutes from CoinGecko</span>
   </div>
 
+  <!-- Security -->
+  <div class="glass-card settings-section">
+    <div class="section-header">
+      <i class="fas fa-lock section-icon" style="color:#ef4444"></i>
+      <h3 data-i18n="settings.security">Безопасность / Security</h3>
+    </div>
+    <div id="securityStatus" style="margin-bottom:1rem;"></div>
+
+    <!-- Change Password -->
+    <div class="form-grid" style="margin-bottom:1rem;">
+      <div class="form-group">
+        <label>Текущий пароль / Current Password</label>
+        <input id="current_password" type="password" class="form-input" />
+      </div>
+      <div class="form-group">
+        <label>Новый пароль / New Password</label>
+        <input id="new_password" type="password" class="form-input" />
+      </div>
+    </div>
+    <div class="section-footer" style="margin-bottom:1.5rem;">
+      <button onclick="changePassword()" class="btn-action btn-test">
+        <i class="fas fa-key"></i> Сменить пароль / Change
+      </button>
+      <span id="passResult" class="test-result"></span>
+    </div>
+
+    <!-- 2FA -->
+    <div style="border-top:1px solid var(--border-color,rgba(255,255,255,0.08));padding-top:1.25rem;">
+      <h4 style="font-size:0.9rem;margin-bottom:0.75rem;">Двухфакторная аутентификация / 2FA</h4>
+      <div id="twoFaSection">
+        <div id="twoFaDisabled" style="display:none;">
+          <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:0.75rem;">2FA не включена / 2FA is not enabled</p>
+          <button onclick="setup2fa()" class="btn-action btn-test">
+            <i class="fas fa-qrcode"></i> Настроить 2FA / Setup
+          </button>
+        </div>
+        <div id="twoFaSetup" style="display:none;text-align:center;">
+          <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:0.75rem;">Отсканируйте QR в Google Authenticator / Scan with authenticator app</p>
+          <img id="twoFaQr" style="max-width:200px;border-radius:0.5rem;margin-bottom:0.75rem;" />
+          <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.5rem;">Secret: <code id="twoFaSecret"></code></p>
+          <div style="display:flex;gap:0.5rem;align-items:center;justify-content:center;">
+            <input id="twoFaVerifyCode" type="text" placeholder="123456" maxlength="6" class="form-input" style="max-width:120px;text-align:center;" />
+            <button onclick="verify2fa()" class="btn-action btn-test">Подтвердить / Verify</button>
+          </div>
+          <span id="twoFaResult" class="test-result"></span>
+        </div>
+        <div id="twoFaEnabled" style="display:none;">
+          <p style="font-size:0.85rem;color:#10b981;margin-bottom:0.75rem;">
+            <i class="fas fa-check-circle"></i> 2FA включена / 2FA is enabled
+          </p>
+          <div style="display:flex;gap:0.5rem;align-items:center;">
+            <input id="disable2faPass" type="password" placeholder="Пароль / Password" class="form-input" style="max-width:200px;" />
+            <button onclick="disable2fa()" class="btn-action" style="background:#ef4444;color:white;">
+              <i class="fas fa-shield-alt"></i> Отключить / Disable
+            </button>
+          </div>
+          <span id="disableResult" class="test-result"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Save -->
   <div class="save-bar">
     <button onclick="saveSettings()" class="btn-action btn-save">
@@ -349,5 +411,63 @@ async function saveSettings() {
 }
 
 loadSettings();
+
+// ---- Security / 2FA ----
+async function load2faStatus() {
+  try {
+    const d = await fetch('/api/auth/2fa/status').then(r => r.json());
+    document.getElementById('twoFaDisabled').style.display = d.enabled ? 'none' : 'block';
+    document.getElementById('twoFaEnabled').style.display = d.enabled ? 'block' : 'none';
+    document.getElementById('twoFaSetup').style.display = 'none';
+    const statusEl = document.getElementById('securityStatus');
+    statusEl.innerHTML = '<span style="font-size:0.85rem;color:var(--text-muted)">Пользователь: <strong>' + d.username + '</strong>' + (d.last_login ? ' · Последний вход: ' + new Date(d.last_login).toLocaleString('ru') : '') + '</span>';
+  } catch {}
+}
+load2faStatus();
+
+async function setup2fa() {
+  try {
+    const d = await fetch('/api/auth/2fa/setup', {method:'POST'}).then(r => r.json());
+    document.getElementById('twoFaDisabled').style.display = 'none';
+    document.getElementById('twoFaSetup').style.display = 'block';
+    document.getElementById('twoFaQr').src = d.qr;
+    document.getElementById('twoFaSecret').textContent = d.secret;
+  } catch {}
+}
+
+async function verify2fa() {
+  const code = document.getElementById('twoFaVerifyCode').value;
+  const el = document.getElementById('twoFaResult');
+  try {
+    const r = await fetch('/api/auth/2fa/verify', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({code})});
+    const d = await r.json();
+    if (r.ok) { el.textContent = '✓ 2FA включена'; el.className = 'test-result ok'; load2faStatus(); }
+    else { el.textContent = d.detail || 'Ошибка'; el.className = 'test-result err'; }
+  } catch { el.textContent = 'Ошибка'; el.className = 'test-result err'; }
+}
+
+async function disable2fa() {
+  const password = document.getElementById('disable2faPass').value;
+  const el = document.getElementById('disableResult');
+  try {
+    const r = await fetch('/api/auth/2fa/disable', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({password})});
+    const d = await r.json();
+    if (r.ok) { el.textContent = '✓ 2FA отключена'; el.className = 'test-result ok'; load2faStatus(); }
+    else { el.textContent = d.detail || 'Ошибка'; el.className = 'test-result err'; }
+  } catch { el.textContent = 'Ошибка'; el.className = 'test-result err'; }
+}
+
+async function changePassword() {
+  const current = document.getElementById('current_password').value;
+  const newp = document.getElementById('new_password').value;
+  const el = document.getElementById('passResult');
+  if (!current || !newp) { el.textContent = 'Заполните оба поля'; el.className = 'test-result err'; return; }
+  try {
+    const r = await fetch('/api/auth/password', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({current_password:current, new_password:newp})});
+    const d = await r.json();
+    if (r.ok) { el.textContent = '✓ Пароль изменён'; el.className = 'test-result ok'; document.getElementById('current_password').value=''; document.getElementById('new_password').value=''; }
+    else { el.textContent = d.detail || 'Ошибка'; el.className = 'test-result err'; }
+  } catch { el.textContent = 'Ошибка'; el.className = 'test-result err'; }
+}
 </script>
 {% endblock %}

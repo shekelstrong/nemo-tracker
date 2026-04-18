@@ -26,6 +26,10 @@ WEB_DIR = BASE_DIR / "web"
 web_app.mount("/static", StaticFiles(directory=str(WEB_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
 
+from src.api.auth import router as auth_router, auth_middleware, ensure_default_admin
+web_app.include_router(auth_router)
+web_app.middleware("http")(auth_middleware)
+
 # ---------------------------------------------------------------------------
 # DB imports (lazy to avoid circular imports at module level)
 # ---------------------------------------------------------------------------
@@ -1129,3 +1133,9 @@ async def push_dashboard_updates():
             await ws_manager.broadcast({"event": "dashboard_update", "data": data})
         except Exception as e:
             logger.error(f"WS push error: {e}")
+
+
+@web_app.on_event("startup")
+async def on_startup():
+    """Run on app startup."""
+    await ensure_default_admin()

@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     ignored_ips: str = ""  # comma-separated IPs to ignore (proxy servers)
     only_enforce_with_limit: bool = True  # only enforce on users with device_count > 0
 
+    # Admin auth
+    admin_username: str = "admin"
+    admin_password: str = "admin"
+
     # GeoIP
     geoip_db_path: str = "./data/GeoLite2-City.mmdb"
 

@@ -112,6 +112,19 @@ class DailyRevenue(Base):
     renewals: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class AdminUser(Base):
+    """Администраторы панели."""
+    __tablename__ = "admin_users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(256), nullable=False)
+    totp_secret: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_login: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Alert(Base):
     """Уведомления и предупреждения."""
     __tablename__ = "alerts"
