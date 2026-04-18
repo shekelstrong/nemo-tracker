@@ -208,3 +208,6 @@ function setLang(lang) {
 }
 
 function getLang() { return _lang; }
+
+// Apply translations on page load
+setLang(_lang);
