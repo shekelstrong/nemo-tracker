@@ -542,13 +542,13 @@ def _mock_transactions(count=20):
     return txs
 
 
-def _mock_chart_data():
+def _mock_chart_data(rate=95.0):
     now = datetime.utcnow()
     days = []
     for i in range(29, -1, -1):
         d = now - timedelta(days=i)
         rub = random.randint(800, 3500)
-        usdt = round(rub / 95, 2)
+        usdt = round(rub / rate, 2)
         days.append({
             "date": d.strftime("%b %d"),
             "rub": rub,
@@ -560,16 +560,19 @@ def _mock_chart_data():
 
 @web_app.get("/api/finance/summary")
 async def api_finance_summary():
-    chart = _mock_chart_data()
+    from src.config import settings
+    rate = await settings.get_usdt_rub_rate()
+    chart = _mock_chart_data(rate)
     today_rub = chart[-1]["rub"]
     week_rub = sum(d["rub"] for d in chart[-7:])
     month_rub = sum(d["rub"] for d in chart)
     all_rub = month_rub * 3 + random.randint(5000, 15000)
     return {
-        "today": {"rub": today_rub, "usdt": round(today_rub / 95, 2)},
-        "week": {"rub": week_rub, "usdt": round(week_rub / 95, 2)},
-        "month": {"rub": month_rub, "usdt": round(month_rub / 95, 2)},
-        "all_time": {"rub": all_rub, "usdt": round(all_rub / 95, 2)},
+        "today": {"rub": today_rub, "usdt": round(today_rub / rate, 2)},
+        "week": {"rub": week_rub, "usdt": round(week_rub / rate, 2)},
+        "month": {"rub": month_rub, "usdt": round(month_rub / rate, 2)},
+        "all_time": {"rub": all_rub, "usdt": round(all_rub / rate, 2)},
+        "rate": rate,
     }
 
 
@@ -594,15 +597,19 @@ async def api_finance_transactions(page: int = 1, per_page: int = 20, method: Op
 
 @web_app.get("/api/finance/metrics")
 async def api_finance_metrics():
+    from src.config import settings
+    rate = await settings.get_usdt_rub_rate()
+    mrr_rub = random.randint(25000, 40000)
     return {
-        "mrr": random.randint(25000, 40000),
-        "mrr_usdt": round(random.uniform(260, 420), 2),
+        "mrr": mrr_rub,
+        "mrr_usdt": round(mrr_rub / rate, 2),
         "arpu": round(random.uniform(350, 500), 0),
         "ltv": round(random.uniform(1200, 2000), 0),
         "conversion_rate": round(random.uniform(12, 22), 1),
         "churn_rate": round(random.uniform(3, 8), 1),
         "active_subscriptions": random.randint(60, 90),
         "new_this_month": random.randint(8, 18),
+        "rate": rate,
     }
 
 

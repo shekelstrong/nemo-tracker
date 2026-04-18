@@ -37,6 +37,45 @@ class Settings(BaseSettings):
     # GeoIP
     geoip_db_path: str = "./data/GeoLite2-City.mmdb"
 
+    # Exchange rate cache
+    _usdt_rub_rate: float = 95.0
+    _rate_updated: float = 0  # timestamp
+
+    async def get_usdt_rub_rate(self) -> float:
+        """Get dynamic USDT/RUB rate from CryptoBot API."""
+        import time
+        import aiohttp
+        now = time.time()
+        # Cache for 10 minutes
+        if now - self._rate_updated < 600:
+            return self._usdt_rub_rate
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get("https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=rub") as resp:
+                    data = await resp.json()
+                    rate = data.get("tether", {}).get("rub", 95.0)
+                    if rate and rate > 0:
+                        self._usdt_rub_rate = rate
+                        self._rate_updated = now
+                        return rate
+        except Exception:
+            pass
+        # Fallback: try CryptoBot
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get("https://pay.crypt.bot/api/getExchangeRates") as resp:
+                    data = await resp.json()
+                    for item in data.get("result", []):
+                        if item.get("source") == "USDT" and item.get("target") == "RUB":
+                            rate = float(item.get("rate", 95.0))
+                            if rate > 0:
+                                self._usdt_rub_rate = rate
+                                self._rate_updated = now
+                                return rate
+        except Exception:
+            pass
+        return self._usdt_rub_rate
+
     @property
     def admin_ids_list(self) -> List[int]:
         return [int(x.strip()) for x in self.admin_ids.split(",") if x.strip()]
