@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Nemo Tracker{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- Stat cards -->
+<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6" id="stat-cards">
+  <!-- filled by JS -->
+</div>
+
+<!-- Charts row 1 -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+  <div class="glass-card p-4">
+    <h3 class="text-sm font-medium text-gray-400 mb-3"><i class="fas fa-signal mr-1"></i> Online Users (24h)</h3>
+    <canvas id="chart-online" height="220"></canvas>
+  </div>
+  <div class="glass-card p-4">
+    <h3 class="text-sm font-medium text-gray-400 mb-3"><i class="fas fa-cloud-arrow-down mr-1"></i> Traffic (30 days, GB)</h3>
+    <canvas id="chart-traffic" height="220"></canvas>
+  </div>
+</div>
+
+<!-- Charts row 2 -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+  <div class="glass-card p-4">
+    <h3 class="text-sm font-medium text-gray-400 mb-3"><i class="fas fa-user-plus mr-1"></i> User Growth</h3>
+    <canvas id="chart-growth" height="220"></canvas>
+  </div>
+  <div class="glass-card p-4">
+    <h3 class="text-sm font-medium text-gray-400 mb-3"><i class="fas fa-clock mr-1"></i> Peak Hours</h3>
+    <canvas id="chart-peak" height="220"></canvas>
+  </div>
+</div>
+
+<!-- Recent alerts -->
+<div class="glass-card p-4">
+  <h3 class="text-sm font-medium text-gray-400 mb-3"><i class="fas fa-bell mr-1"></i> Recent Alerts</h3>
+  <div id="recent-alerts" class="space-y-2"><!-- filled by JS --></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async () => {
+  const d = await (await fetch('/api/dashboard')).json();
+
+  // Stat cards
+  const cards = [
+    { label: 'Total Users', value: d.stats.total_users, icon: 'fa-users', color: 'from-blue-500 to-blue-700' },
+    { label: 'Active Users', value: d.stats.active_users, icon: 'fa-user-check', color: 'from-green-500 to-green-700' },
+    { label: 'Online Now', value: d.stats.online_now, icon: 'fa-wifi', color: 'from-brand-400 to-brand-600' },
+    { label: 'Total Traffic', value: d.stats.total_traffic, icon: 'fa-database', color: 'from-amber-500 to-amber-700' },
+  ];
+  document.getElementById('stat-cards').innerHTML = cards.map(c => `
+    <div class="glass-card flex items-center gap-4 p-4">
+      <div class="w-11 h-11 rounded-xl bg-gradient-to-br ${c.color} flex items-center justify-center shrink-0">
+        <i class="fas ${c.icon} text-white"></i>
+      </div>
+      <div>
+        <div class="text-2xl font-bold text-white">${c.value}</div>
+        <div class="text-xs text-gray-400">${c.label}</div>
+      </div>
+    </div>
+  `).join('');
+
+  // Charts
+  const gridColor = 'rgba(255,255,255,0.06)';
+  const tickColor = '#6b7280';
+  const defaultOpts = { responsive: true, plugins: { legend: { display: false } },
+    scales: { x: { grid: { color: gridColor }, ticks: { color: tickColor, maxTicksLimit: 12 } },
+              y: { grid: { color: gridColor }, ticks: { color: tickColor } } } };
+
+  new Chart(document.getElementById('chart-online'), {
+    type: 'line', data: {
+      labels: d.online_24h.map(i => i.hour),
+      datasets: [{ data: d.online_24h.map(i => i.count), borderColor: '#7c3aed',
+        backgroundColor: 'rgba(124,58,237,0.15)', fill: true, tension: 0.4, pointRadius: 2 }]
+    }, options: defaultOpts
+  });
+
+  new Chart(document.getElementById('chart-traffic'), {
+    type: 'bar', data: {
+      labels: d.traffic_30d.map(i => i.day),
+      datasets: [{ data: d.traffic_30d.map(i => i.value),
+        backgroundColor: 'rgba(124,58,237,0.6)', borderRadius: 4 }]
+    }, options: defaultOpts
+  });
+
+  new Chart(document.getElementById('chart-growth'), {
+    type: 'line', data: {
+      labels: d.growth.map(i => i.month),
+      datasets: [{ data: d.growth.map(i => i.users), borderColor: '#10b981',
+        backgroundColor: 'rgba(16,185,129,0.15)', fill: true, tension: 0.4 }]
+    }, options: defaultOpts
+  });
+
+  new Chart(document.getElementById('chart-peak'), {
+    type: 'radar', data: {
+      labels: d.peak_hours.labels,
+      datasets: [{ data: d.peak_hours.values, borderColor: '#7c3aed',
+        backgroundColor: 'rgba(124,58,237,0.25)', pointBackgroundColor: '#7c3aed' }]
+    }, options: { responsive: true, plugins: { legend: { display: false } },
+      scales: { r: { grid: { color: gridColor }, angleLines: { color: gridColor },
+        ticks: { color: tickColor, backdropColor: 'transparent' },
+        pointLabels: { color: tickColor } } } }
+  });
+
+  // Alerts
+  const alertIcons = { device_over: 'fa-laptop text-red-400', traffic_80: 'fa-chart-bar text-yellow-400',
+    new_user: 'fa-user-plus text-blue-400', expiring: 'fa-clock text-orange-400' };
+  document.getElementById('recent-alerts').innerHTML = d.recent_alerts.map(a => `
+    <div class="flex items-center gap-3 bg-white/5 rounded-lg px-3 py-2">
+      <i class="fas ${alertIcons[a.type] || 'fa-bell text-gray-400'} w-5 text-center"></i>
+      <span class="flex-1 text-sm">${a.message}</span>
+      <span class="text-xs text-gray-500">${a.time}</span>
+    </div>
+  `).join('');
+})();
+</script>
+{% endblock %}

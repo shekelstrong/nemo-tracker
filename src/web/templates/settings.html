@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Settings — Nemo Tracker{% endblock %}
+{% block nav_settings %}active{% endblock %}
+{% block page_title %}Settings{% endblock %}
+
+{% block content %}
+<div x-data="settingsApp()" class="space-y-6">
+
+  <!-- Marzban Connection -->
+  <div class="glass-card p-5">
+    <h3 class="text-sm font-medium text-gray-400 mb-4"><i class="fas fa-server mr-1"></i> Marzban Connection</h3>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Panel URL</label>
+        <input x-model="s.marzban_url" type="url" placeholder="https://panel.example.com"
+          class="input-field" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Username</label>
+        <input x-model="s.marzban_username" type="text" class="input-field" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Password</label>
+        <input x-model="s.marzban_password" type="password" class="input-field" />
+      </div>
+    </div>
+    <div class="mt-3 flex items-center gap-3">
+      <button @click="testMarzban" class="btn-primary text-xs">
+        <i class="fas fa-plug mr-1"></i> Test Connection
+      </button>
+      <span x-show="marzbanResult" x-text="marzbanResult" class="text-xs" :class="marzbanOk ? 'text-green-400' : 'text-red-400'"></span>
+    </div>
+  </div>
+
+  <!-- Telegram Bot -->
+  <div class="glass-card p-5">
+    <h3 class="text-sm font-medium text-gray-400 mb-4"><i class="fab fa-telegram mr-1"></i> Telegram Bot</h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Bot Token</label>
+        <input x-model="s.telegram_token" type="text" placeholder="123456:ABCdef..."
+          class="input-field" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Admin IDs (comma-separated)</label>
+        <input x-model="s.telegram_admin_ids" type="text" placeholder="123456, 789012"
+          class="input-field" />
+      </div>
+    </div>
+    <div class="mt-3 flex items-center gap-3">
+      <button @click="testTelegram" class="btn-primary text-xs">
+        <i class="fas fa-paper-plane mr-1"></i> Test Bot
+      </button>
+      <span x-show="telegramResult" x-text="telegramResult" class="text-xs" :class="telegramOk ? 'text-green-400' : 'text-red-400'"></span>
+    </div>
+
+    <!-- BotFather instructions -->
+    <div class="mt-5 bg-white/5 rounded-lg p-4 text-sm">
+      <h4 class="font-semibold text-white mb-2"><i class="fas fa-info-circle mr-1 text-brand-400"></i> How to Create a Telegram Bot</h4>
+      <ol class="list-decimal list-inside space-y-1.5 text-gray-300">
+        <li>Open Telegram and search for <strong class="text-white">@BotFather</strong></li>
+        <li>Send the command <code class="bg-white/10 px-1.5 py-0.5 rounded text-brand-300">/newbot</code></li>
+        <li>Choose a <strong class="text-white">display name</strong> for your bot (e.g. "Nemo Tracker")</li>
+        <li>Choose a <strong class="text-white">username</strong> ending in <code class="bg-white/10 px-1.5 py-0.5 rounded">bot</code> (e.g. <code class="bg-white/10 px-1.5 py-0.5 rounded">nemo_tracker_bot</code>)</li>
+        <li>BotFather will respond with your <strong class="text-white">bot token</strong> — copy it into the field above</li>
+        <li>To get your <strong class="text-white">Admin ID</strong>: message <code class="bg-white/10 px-1.5 py-0.5 rounded">@userinfobot</code> on Telegram and copy the ID</li>
+        <li>Send <code class="bg-white/10 px-1.5 py-0.5 rounded">/setprivacy</code> to BotFather, select your bot, then choose <strong class="text-white">Disable</strong> so the bot can read group messages (optional)</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- Device Tracking Rules -->
+  <div class="glass-card p-5">
+    <h3 class="text-sm font-medium text-gray-400 mb-4"><i class="fas fa-sliders mr-1"></i> Device Tracking Rules</h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Track Inbounds (one per line)</label>
+        <textarea x-model="s.track_inbounds_text" rows="3" class="input-field" placeholder="vless-in&#10;vmess-in"></textarea>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Ignore Inbounds (one per line)</label>
+        <textarea x-model="s.ignore_inbounds_text" rows="3" class="input-field" placeholder="direct-in"></textarea>
+      </div>
+    </div>
+    <div class="mt-4">
+      <label class="block text-xs text-gray-500 mb-1">Ignored IPs (one per line, supports CIDR)</label>
+      <textarea x-model="s.ignored_ips" rows="2" class="input-field" placeholder="10.0.0.0/8&#10;192.168.1.1"></textarea>
+    </div>
+  </div>
+
+  <!-- Notification Preferences -->
+  <div class="glass-card p-5">
+    <h3 class="text-sm font-medium text-gray-400 mb-4"><i class="fas fa-bell mr-1"></i> Notification Preferences</h3>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <label class="flex items-center gap-3 cursor-pointer">
+        <input type="checkbox" x-model="s.notify_new_user" class="accent-brand-500 w-4 h-4" />
+        <span class="text-sm">New user registered</span>
+      </label>
+      <label class="flex items-center gap-3 cursor-pointer">
+        <input type="checkbox" x-model="s.notify_traffic_80" class="accent-brand-500 w-4 h-4" />
+        <span class="text-sm">Traffic usage &gt; 80%</span>
+      </label>
+      <label class="flex items-center gap-3 cursor-pointer">
+        <input type="checkbox" x-model="s.notify_device_over" class="accent-brand-500 w-4 h-4" />
+        <span class="text-sm">Device limit exceeded</span>
+      </label>
+      <label class="flex items-center gap-3 cursor-pointer">
+        <input type="checkbox" x-model="s.notify_expiring" class="accent-brand-500 w-4 h-4" />
+        <span class="text-sm">Account expiring soon</span>
+      </label>
+    </div>
+  </div>
+
+  <!-- Save -->
+  <div class="flex items-center gap-3">
+    <button @click="save" class="btn-primary">
+      <i class="fas fa-save mr-1"></i> Save Settings
+    </button>
+    <span x-show="saveMsg" x-text="saveMsg" class="text-xs text-green-400"></span>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function settingsApp() {
+  return {
+    s: {}, marzbanResult: '', marzbanOk: false, telegramResult: '', telegramOk: false, saveMsg: '',
+    async init() {
+      const data = await (await fetch('/api/settings')).json();
+      data.track_inbounds_text = (data.track_inbounds || []).join('\n');
+      data.ignore_inbounds_text = (data.ignore_inbounds || []).join('\n');
+      this.s = data;
+    },
+    async testMarzban() {
+      try { const r = await (await fetch('/api/settings/test-marzban', {method:'POST'})).json();
+        this.marzbanResult = r.message; this.marzbanOk = r.ok;
+      } catch { this.marzbanResult = 'Connection failed'; this.marzbanOk = false; }
+    },
+    async testTelegram() {
+      try { const r = await (await fetch('/api/settings/test-telegram', {method:'POST'})).json();
+        this.telegramResult = r.message; this.telegramOk = r.ok;
+      } catch { this.telegramResult = 'Connection failed'; this.telegramOk = false; }
+    },
+    async save() {
+      const payload = { ...this.s };
+      payload.track_inbounds = payload.track_inbounds_text.split('\n').map(s=>s.trim()).filter(Boolean);
+      payload.ignore_inbounds = payload.ignore_inbounds_text.split('\n').map(s=>s.trim()).filter(Boolean);
+      delete payload.track_inbounds_text; delete payload.ignore_inbounds_text;
+      await fetch('/api/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      this.saveMsg = 'Saved!'; setTimeout(() => this.saveMsg = '', 2000);
+    }
+  };
+}
+</script>
+{% endblock %}

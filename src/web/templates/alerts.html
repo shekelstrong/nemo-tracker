@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Alerts — Nemo Tracker{% endblock %}
+{% block nav_alerts %}active{% endblock %}
+{% block page_title %}Alerts{% endblock %}
+
+{% block content %}
+<div class="glass-card p-4">
+  <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between mb-4">
+    <div class="flex gap-2 text-xs flex-wrap">
+      <button onclick="filterType('')" class="px-3 py-1 rounded-full bg-white/10 hover:bg-brand-500/30 transition">All</button>
+      <button onclick="filterType('new_user')" class="px-3 py-1 rounded-full bg-white/10 hover:bg-blue-500/30 transition">New User</button>
+      <button onclick="filterType('traffic_80')" class="px-3 py-1 rounded-full bg-white/10 hover:bg-yellow-500/30 transition">Traffic 80%</button>
+      <button onclick="filterType('device_over')" class="px-3 py-1 rounded-full bg-white/10 hover:bg-red-500/30 transition">Device Over</button>
+      <button onclick="filterType('expiring')" class="px-3 py-1 rounded-full bg-white/10 hover:bg-orange-500/30 transition">Expiring</button>
+    </div>
+    <div class="flex gap-2 text-xs">
+      <button onclick="filterResolved(null)" class="px-3 py-1 rounded-full bg-white/10 hover:bg-brand-500/30 transition">All</button>
+      <button onclick="filterResolved(false)" class="px-3 py-1 rounded-full bg-white/10 hover:bg-green-500/30 transition">Active</button>
+      <button onclick="filterResolved(true)" class="px-3 py-1 rounded-full bg-white/10 hover:bg-gray-500/30 transition">Resolved</button>
+    </div>
+  </div>
+  <div class="space-y-2" id="alerts-list"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let alerts = [];
+let typeFilter = '';
+let resolvedFilter = null;
+
+async function loadAlerts() {
+  alerts = await (await fetch('/api/alerts')).json();
+  render();
+}
+
+function filterType(t) { typeFilter = t; render(); }
+function filterResolved(r) { resolvedFilter = r; render(); }
+
+async function resolveAlert(id) {
+  await fetch(`/api/alerts/${id}/resolve`, { method: 'POST' });
+  const a = alerts.find(a => a.id === id);
+  if (a) a.resolved = true;
+  render();
+}
+
+function render() {
+  let list = [...alerts];
+  if (typeFilter) list = list.filter(a => a.type === typeFilter);
+  if (resolvedFilter !== null) list = list.filter(a => a.resolved === resolvedFilter);
+
+  const icons = { new_user: 'fa-user-plus text-blue-400', traffic_80: 'fa-chart-bar text-yellow-400',
+    device_over: 'fa-laptop text-red-400', expiring: 'fa-clock text-orange-400' };
+
+  document.getElementById('alerts-list').innerHTML = list.map(a => `
+    <div class="flex items-center gap-3 bg-white/5 rounded-lg px-4 py-3 ${a.resolved ? 'opacity-50' : ''}">
+      <i class="fas ${icons[a.type] || 'fa-bell text-gray-400'} w-5 text-center"></i>
+      <div class="flex-1">
+        <div class="text-sm">${a.message}</div>
+        <div class="text-xs text-gray-500 mt-0.5">${new Date(a.time).toLocaleString()} &middot; <span class="uppercase">${a.type}</span></div>
+      </div>
+      ${a.resolved
+        ? '<span class="text-xs text-gray-500"><i class="fas fa-check"></i> Resolved</span>'
+        : `<button onclick="resolveAlert(${a.id})" class="text-xs text-brand-400 hover:text-brand-300"><i class="fas fa-check mr-1"></i>Resolve</button>`}
+    </div>
+  `).join('');
+}
+
+loadAlerts();
+</script>
+{% endblock %}
