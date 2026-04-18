@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% block title %}Analytics — Nemo Tracker{% endblock %}
+{% block topbar_title %}analytics.title{% endblock %}
+
+{% block content %}
+<div id="analyticsLoading"><div class="spinner"></div></div>
+<div id="analyticsContent" style="display:none">
+
+  <!-- Traffic Chart -->
+  <div class="chart-card" style="margin-bottom:24px">
+    <h3 data-i18n="analytics.traffic_chart">Total Traffic (30 days)</h3>
+    <div style="height:300px"><canvas id="chartTraffic"></canvas></div>
+  </div>
+
+  <!-- Top Users + Distribution -->
+  <div class="charts-grid">
+    <div class="chart-card">
+      <h3 data-i18n="analytics.top_users">Top-10 Traffic Consumers</h3>
+      <div style="overflow-x:auto">
+        <table class="data-table" id="topUsersTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th data-i18n="analytics.username">Username</th>
+              <th data-i18n="analytics.used">Used</th>
+              <th data-i18n="analytics.limit">Limit</th>
+              <th>%</th>
+            </tr>
+          </thead>
+          <tbody id="topUsersBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="chart-card">
+      <h3 data-i18n="analytics.distribution">Traffic Distribution</h3>
+      <div style="height:300px;display:flex;align-items:center;justify-content:center">
+        <canvas id="chartDistribution"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Anomalies -->
+  <div class="chart-card" style="margin-top:24px">
+    <h3 data-i18n="analytics.anomalies">Anomalies</h3>
+    <div id="anomaliesContainer"></div>
+  </div>
+
+</div>
+
+<style>
+.anomaly-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border-radius: var(--radius-sm);
+  border-left: 4px solid var(--accent-orange);
+  background: var(--bg-card);
+  margin-bottom: 12px;
+  backdrop-filter: blur(12px);
+}
+.anomaly-card .anomaly-icon {
+  font-size: 24px;
+  color: var(--accent-orange);
+}
+.anomaly-card .anomaly-info {
+  flex: 1;
+}
+.anomaly-card .anomaly-username {
+  font-weight: 600;
+  color: var(--text);
+}
+.anomaly-card .anomaly-detail {
+  font-size: 13px;
+  color: var(--text-2);
+  margin-top: 4px;
+}
+.anomaly-card .anomaly-multiplier {
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--accent-red);
+}
+.progress-bar-wrap {
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+  margin-top: 4px;
+}
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const isDark = document.documentElement.classList.contains('dark');
+const textColor = isDark ? '#a0aec0' : '#64748b';
+const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+
+function progressColor(pct) {
+  if (pct < 50) return '#00b894';
+  if (pct < 75) return '#f39c12';
+  if (pct < 100) return '#e67e22';
+  return '#e74c3c';
+}
+
+async function loadAnalytics() {
+  try {
+    const [traffic, topUsers, distribution, anomalies] = await Promise.all([
+      fetch('/api/analytics/traffic').then(r => r.json()),
+      fetch('/api/analytics/top-users').then(r => r.json()),
+      fetch('/api/analytics/distribution').then(r => r.json()),
+      fetch('/api/analytics/anomalies').then(r => r.json()),
+    ]);
+
+    document.getElementById('analyticsLoading').style.display = 'none';
+    document.getElementById('analyticsContent').style.display = 'block';
+
+    // --- Traffic Chart ---
+    const tCtx = document.getElementById('chartTraffic').getContext('2d');
+    const gradient = tCtx.createLinearGradient(0, 0, 0, 300);
+    gradient.addColorStop(0, isDark ? 'rgba(108,92,231,0.4)' : 'rgba(108,92,231,0.3)');
+    gradient.addColorStop(1, 'rgba(108,92,231,0.01)');
+
+    new Chart(tCtx, {
+      type: 'line',
+      data: {
+        labels: traffic.map(d => d.date.substring(5)),
+        datasets: [{
+          label: t('analytics.gb'),
+          data: traffic.map(d => d.total_gb),
+          fill: true,
+          backgroundColor: gradient,
+          borderColor: '#6c5ce7',
+          borderWidth: 2,
+          tension: 0.4,
+          pointRadius: 2,
+          pointHoverRadius: 5,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: textColor, maxRotation: 45 }, grid: { color: gridColor } },
+          y: { ticks: { color: textColor, callback: v => v + ' GB' }, grid: { color: gridColor } }
+        }
+      }
+    });
+
+    // --- Top Users Table ---
+    const tbody = document.getElementById('topUsersBody');
+    tbody.innerHTML = topUsers.map((u, i) => {
+      const color = progressColor(u.percent);
+      return `<tr>
+        <td>${i + 1}</td>
+        <td><a href="/users/${u.username}" style="color:var(--primary);text-decoration:none;font-weight:500">${u.username}</a></td>
+        <td>${u.used_gb} GB</td>
+        <td>${u.limit_gb} GB</td>
+        <td style="min-width:120px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="progress-bar-wrap" style="flex:1">
+              <div class="progress-bar-fill" style="width:${Math.min(u.percent, 100)}%;background:${color}"></div>
+            </div>
+            <span style="font-size:12px;color:${color};font-weight:600">${u.percent}%</span>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+
+    // --- Distribution Doughnut ---
+    const colors = ['#00b894', '#55efc4', '#f39c12', '#e67e22', '#e74c3c'];
+    new Chart(document.getElementById('chartDistribution'), {
+      type: 'doughnut',
+      data: {
+        labels: distribution.map(d => d.range + '%'),
+        datasets: [{
+          data: distribution.map(d => d.count),
+          backgroundColor: colors,
+          borderColor: isDark ? '#1a1a2e' : '#ffffff',
+          borderWidth: 3,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: { color: textColor, padding: 16, usePointStyle: true }
+          }
+        }
+      }
+    });
+
+    // --- Anomalies ---
+    const container = document.getElementById('anomaliesContainer');
+    if (anomalies.length === 0) {
+      container.innerHTML = `<div style="text-align:center;padding:32px;color:var(--text-3)">
+        <i class="fas fa-check-circle" style="font-size:32px;color:var(--accent-green);margin-bottom:8px;display:block"></i>
+        <span data-i18n="analytics.no_anomalies">${t('analytics.no_anomalies')}</span>
+      </div>`;
+    } else {
+      container.innerHTML = anomalies.map(a => `
+        <div class="anomaly-card">
+          <div class="anomaly-icon"><i class="fas fa-exclamation-triangle"></i></div>
+          <div class="anomaly-info">
+            <div class="anomaly-username">${a.username}</div>
+            <div class="anomaly-detail">
+              ${a.used_gb} GB / ${a.limit_gb ? a.limit_gb + ' GB' : '∞'} —
+              ${t('analytics.anomaly_desc')} (${a.multiplier}x)
+            </div>
+          </div>
+          <div class="anomaly-multiplier">${a.multiplier}x</div>
+        </div>
+      `).join('');
+    }
+
+    // Re-apply i18n for dynamically added elements
+    if (typeof setLang === 'function') setLang(getLang());
+
+  } catch (e) {
+    console.error('Analytics load error:', e);
+    document.getElementById('analyticsLoading').innerHTML = `<div style="text-align:center;color:var(--accent-red)">Error: ${e.message}</div>`;
+  }
+}
+
+loadAnalytics();
+</script>
+{% endblock %}

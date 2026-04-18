@@ -136,6 +136,10 @@ async def page_devices(request: Request):
 async def page_device_detail(request: Request, username: str):
     return templates.TemplateResponse(request, "user_detail.html", {"username": username, "tab": "devices"})
 
+@web_app.get("/analytics", response_class=HTMLResponse)
+async def page_analytics(request: Request):
+    return templates.TemplateResponse(request, "analytics.html")
+
 @web_app.get("/settings", response_class=HTMLResponse)
 async def page_settings(request: Request):
     return templates.TemplateResponse(request, "settings.html")
@@ -503,6 +507,118 @@ async def api_test_telegram():
     # TODO: real bot test
     await asyncio.sleep(0.5)
     return {"ok": True, "message": "Bot token valid"}
+
+
+# ---------------------------------------------------------------------------
+# API routes — Analytics
+# ---------------------------------------------------------------------------
+
+@web_app.get("/api/analytics/traffic")
+async def api_analytics_traffic():
+    """Traffic data for last 30 days from analytics table."""
+    async with async_session() as session:
+        now = datetime.utcnow()
+        rows = (await session.execute(
+            select(Analytics)
+            .where(Analytics.date >= (now - timedelta(days=30)).date())
+            .order_by(Analytics.date)
+        )).scalars().all()
+
+        traffic = []
+        for r in rows:
+            traffic.append({
+                "date": r.date.strftime("%Y-%m-%d") if hasattr(r.date, "strftime") else str(r.date),
+                "total_gb": round(r.total_traffic_gb or 0, 2),
+            })
+        return traffic
+
+
+@web_app.get("/api/analytics/top-users")
+async def api_analytics_top_users():
+    """Top-10 traffic consumers."""
+    async with async_session() as session:
+        rows = (await session.execute(
+            select(DBUser)
+            .where(DBUser.data_limit != None, DBUser.data_limit > 0)
+            .order_by(desc(DBUser.used_traffic))
+            .limit(10)
+        )).scalars().all()
+
+        result = []
+        for u in rows:
+            used_gb = round((u.used_traffic or 0) / 1024**3, 2)
+            limit_gb = round((u.data_limit or 0) / 1024**3, 2)
+            pct = round((used_gb / limit_gb) * 100, 1) if limit_gb > 0 else 0
+            result.append({
+                "username": u.username,
+                "used_gb": used_gb,
+                "limit_gb": limit_gb,
+                "percent": pct,
+            })
+        return result
+
+
+@web_app.get("/api/analytics/distribution")
+async def api_analytics_distribution():
+    """Distribution of users by traffic usage percentage buckets."""
+    async with async_session() as session:
+        rows = (await session.execute(
+            select(DBUser.used_traffic, DBUser.data_limit)
+            .where(DBUser.data_limit != None, DBUser.data_limit > 0)
+        )).all()
+
+        buckets = {"0-25": 0, "25-50": 0, "50-75": 0, "75-100": 0, ">100": 0}
+        for used, limit in rows:
+            pct = ((used or 0) / limit) * 100 if limit else 0
+            if pct <= 25:
+                buckets["0-25"] += 1
+            elif pct <= 50:
+                buckets["25-50"] += 1
+            elif pct <= 75:
+                buckets["50-75"] += 1
+            elif pct <= 100:
+                buckets["75-100"] += 1
+            else:
+                buckets[">100"] += 1
+
+        return [{"range": k, "count": v} for k, v in buckets.items()]
+
+
+@web_app.get("/api/analytics/anomalies")
+async def api_analytics_anomalies():
+    """Users with anomalous traffic consumption (>3x average)."""
+    async with async_session() as session:
+        rows = (await session.execute(
+            select(DBUser).where(DBUser.status == "active")
+        )).scalars().all()
+
+        if not rows:
+            return []
+
+        used_values = [(u.used_traffic or 0) for u in rows if (u.used_traffic or 0) > 0]
+        if not used_values:
+            return []
+
+        avg_traffic = sum(used_values) / len(used_values)
+        threshold = avg_traffic * 3
+
+        anomalies = []
+        for u in rows:
+            used = u.used_traffic or 0
+            if used > threshold:
+                used_gb = round(used / 1024**3, 2)
+                limit_gb = round((u.data_limit or 0) / 1024**3, 2) if u.data_limit else None
+                avg_gb = round(avg_traffic / 1024**3, 2)
+                multiplier = round(used / avg_traffic, 1) if avg_traffic > 0 else 0
+                anomalies.append({
+                    "username": u.username,
+                    "used_gb": used_gb,
+                    "limit_gb": limit_gb,
+                    "avg_gb": avg_gb,
+                    "multiplier": multiplier,
+                })
+
+        return sorted(anomalies, key=lambda x: x["multiplier"], reverse=True)[:10]
 
 
 # ---------------------------------------------------------------------------

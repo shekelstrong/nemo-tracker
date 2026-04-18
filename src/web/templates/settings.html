@@ -1,156 +1,353 @@
 {% extends "base.html" %}
 {% block title %}Settings — Nemo Tracker{% endblock %}
-{% block nav_settings %}active{% endblock %}
-{% block page_title %}Settings{% endblock %}
+{% set page = 'settings' %}
+{% block topbar_title %}settings.title{% endblock %}
 
 {% block content %}
-<div x-data="settingsApp()" class="space-y-6">
+<div class="settings-page">
 
   <!-- Marzban Connection -->
-  <div class="glass-card p-5">
-    <h3 class="text-sm font-medium text-gray-400 mb-4"><i class="fas fa-server mr-1"></i> Marzban Connection</h3>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div>
-        <label class="block text-xs text-gray-500 mb-1">Panel URL</label>
-        <input x-model="s.marzban_url" type="url" placeholder="https://panel.example.com"
-          class="input-field" />
+  <div class="glass-card settings-section">
+    <div class="section-header">
+      <i class="fas fa-server section-icon"></i>
+      <h3 data-i18n="settings.marzban">Marzban Connection</h3>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label data-i18n="settings.marzban_url">Panel URL</label>
+        <input id="marzban_url" type="url" placeholder="https://panel.example.com" class="form-input" />
       </div>
-      <div>
-        <label class="block text-xs text-gray-500 mb-1">Username</label>
-        <input x-model="s.marzban_username" type="text" class="input-field" />
+      <div class="form-group">
+        <label data-i18n="settings.marzban_user">Username</label>
+        <input id="marzban_username" type="text" class="form-input" />
       </div>
-      <div>
-        <label class="block text-xs text-gray-500 mb-1">Password</label>
-        <input x-model="s.marzban_password" type="password" class="input-field" />
+      <div class="form-group">
+        <label data-i18n="settings.marzban_pass">Password</label>
+        <div class="password-field">
+          <input id="marzban_password" type="password" class="form-input" />
+          <button onclick="togglePassword('marzban_password')" class="btn-icon" title="Show/hide">
+            <i class="fas fa-eye"></i>
+          </button>
+        </div>
       </div>
     </div>
-    <div class="mt-3 flex items-center gap-3">
-      <button @click="testMarzban" class="btn-primary text-xs">
-        <i class="fas fa-plug mr-1"></i> Test Connection
+    <div class="section-footer">
+      <button onclick="testMarzban()" class="btn-action btn-test">
+        <i class="fas fa-plug"></i> <span data-i18n="settings.test_connection">Test Connection</span>
       </button>
-      <span x-show="marzbanResult" x-text="marzbanResult" class="text-xs" :class="marzbanOk ? 'text-green-400' : 'text-red-400'"></span>
+      <span id="marzbanResult" class="test-result"></span>
     </div>
   </div>
 
   <!-- Telegram Bot -->
-  <div class="glass-card p-5">
-    <h3 class="text-sm font-medium text-gray-400 mb-4"><i class="fab fa-telegram mr-1"></i> Telegram Bot</h3>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div>
-        <label class="block text-xs text-gray-500 mb-1">Bot Token</label>
-        <input x-model="s.telegram_token" type="text" placeholder="123456:ABCdef..."
-          class="input-field" />
+  <div class="glass-card settings-section">
+    <div class="section-header">
+      <i class="fab fa-telegram section-icon telegram-icon"></i>
+      <h3 data-i18n="settings.telegram">Telegram Bot</h3>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label data-i18n="settings.bot_token">Bot Token</label>
+        <div class="password-field">
+          <input id="bot_token" type="password" placeholder="123456:ABCdef..." class="form-input" />
+          <button onclick="togglePassword('bot_token')" class="btn-icon" title="Show/hide">
+            <i class="fas fa-eye"></i>
+          </button>
+        </div>
       </div>
-      <div>
-        <label class="block text-xs text-gray-500 mb-1">Admin IDs (comma-separated)</label>
-        <input x-model="s.telegram_admin_ids" type="text" placeholder="123456, 789012"
-          class="input-field" />
+      <div class="form-group">
+        <label data-i18n="settings.admin_ids">Admin IDs</label>
+        <input id="admin_ids" type="text" placeholder="123456, 789012" class="form-input" />
       </div>
     </div>
-    <div class="mt-3 flex items-center gap-3">
-      <button @click="testTelegram" class="btn-primary text-xs">
-        <i class="fas fa-paper-plane mr-1"></i> Test Bot
+    <div class="section-footer">
+      <button onclick="testTelegram()" class="btn-action btn-test">
+        <i class="fas fa-paper-plane"></i> Test Bot
       </button>
-      <span x-show="telegramResult" x-text="telegramResult" class="text-xs" :class="telegramOk ? 'text-green-400' : 'text-red-400'"></span>
+      <span id="telegramResult" class="test-result"></span>
     </div>
-
-    <!-- BotFather instructions -->
-    <div class="mt-5 bg-white/5 rounded-lg p-4 text-sm">
-      <h4 class="font-semibold text-white mb-2"><i class="fas fa-info-circle mr-1 text-brand-400"></i> How to Create a Telegram Bot</h4>
-      <ol class="list-decimal list-inside space-y-1.5 text-gray-300">
-        <li>Open Telegram and search for <strong class="text-white">@BotFather</strong></li>
-        <li>Send the command <code class="bg-white/10 px-1.5 py-0.5 rounded text-brand-300">/newbot</code></li>
-        <li>Choose a <strong class="text-white">display name</strong> for your bot (e.g. "Nemo Tracker")</li>
-        <li>Choose a <strong class="text-white">username</strong> ending in <code class="bg-white/10 px-1.5 py-0.5 rounded">bot</code> (e.g. <code class="bg-white/10 px-1.5 py-0.5 rounded">nemo_tracker_bot</code>)</li>
-        <li>BotFather will respond with your <strong class="text-white">bot token</strong> — copy it into the field above</li>
-        <li>To get your <strong class="text-white">Admin ID</strong>: message <code class="bg-white/10 px-1.5 py-0.5 rounded">@userinfobot</code> on Telegram and copy the ID</li>
-        <li>Send <code class="bg-white/10 px-1.5 py-0.5 rounded">/setprivacy</code> to BotFather, select your bot, then choose <strong class="text-white">Disable</strong> so the bot can read group messages (optional)</li>
-      </ol>
+    <div class="info-box">
+      <h4><i class="fas fa-info-circle"></i> <span data-i18n="settings.botfather">BotFather Instructions</span></h4>
+      <div data-i18n="settings.botfather_text" class="info-text">1. Open @BotFather in Telegram<br>2. Send /newbot<br>3. Choose a name and username<br>4. Copy the token and paste above</div>
     </div>
   </div>
 
   <!-- Device Tracking Rules -->
-  <div class="glass-card p-5">
-    <h3 class="text-sm font-medium text-gray-400 mb-4"><i class="fas fa-sliders mr-1"></i> Device Tracking Rules</h3>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div>
-        <label class="block text-xs text-gray-500 mb-1">Track Inbounds (one per line)</label>
-        <textarea x-model="s.track_inbounds_text" rows="3" class="input-field" placeholder="vless-in&#10;vmess-in"></textarea>
+  <div class="glass-card settings-section">
+    <div class="section-header">
+      <i class="fas fa-shield-alt section-icon shield-icon"></i>
+      <h3 data-i18n="settings.device_rules">Device Tracking Rules</h3>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label data-i18n="settings.track_inbounds">Track Inbounds</label>
+        <textarea id="track_inbounds" rows="3" class="form-input form-textarea" placeholder="vless-reality-whitelist"></textarea>
+        <span class="form-hint" data-i18n="settings.hint_track">One inbound tag per line. Only these will be monitored.</span>
       </div>
-      <div>
-        <label class="block text-xs text-gray-500 mb-1">Ignore Inbounds (one per line)</label>
-        <textarea x-model="s.ignore_inbounds_text" rows="3" class="input-field" placeholder="direct-in"></textarea>
+      <div class="form-group">
+        <label data-i18n="settings.ignore_inbounds">Ignore Inbounds</label>
+        <textarea id="ignore_inbounds" rows="3" class="form-input form-textarea" placeholder="vless-reality-standard"></textarea>
+        <span class="form-hint" data-i18n="settings.hint_ignore">These inbounds will never be tracked or blocked.</span>
       </div>
     </div>
-    <div class="mt-4">
-      <label class="block text-xs text-gray-500 mb-1">Ignored IPs (one per line, supports CIDR)</label>
-      <textarea x-model="s.ignored_ips" rows="2" class="input-field" placeholder="10.0.0.0/8&#10;192.168.1.1"></textarea>
+    <div class="form-group full-width">
+      <label data-i18n="settings.ignored_ips">Ignored IPs</label>
+      <textarea id="ignored_ips" rows="2" class="form-input form-textarea" placeholder="51.250.40.213&#10;10.0.0.0/8"></textarea>
+      <span class="form-hint" data-i18n="settings.hint_ips">Proxy servers and internal networks. One per line. Supports CIDR.</span>
     </div>
   </div>
 
   <!-- Notification Preferences -->
-  <div class="glass-card p-5">
-    <h3 class="text-sm font-medium text-gray-400 mb-4"><i class="fas fa-bell mr-1"></i> Notification Preferences</h3>
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <label class="flex items-center gap-3 cursor-pointer">
-        <input type="checkbox" x-model="s.notify_new_user" class="accent-brand-500 w-4 h-4" />
-        <span class="text-sm">New user registered</span>
+  <div class="glass-card settings-section">
+    <div class="section-header">
+      <i class="fas fa-bell section-icon bell-icon"></i>
+      <h3 data-i18n="settings.notifications">Notifications</h3>
+    </div>
+    <div class="toggle-grid">
+      <label class="toggle-item">
+        <input type="checkbox" id="notify_new_user" checked />
+        <span class="toggle-slider"></span>
+        <span class="toggle-label" data-i18n="settings.notify_new_user">New user registered</span>
       </label>
-      <label class="flex items-center gap-3 cursor-pointer">
-        <input type="checkbox" x-model="s.notify_traffic_80" class="accent-brand-500 w-4 h-4" />
-        <span class="text-sm">Traffic usage &gt; 80%</span>
+      <label class="toggle-item">
+        <input type="checkbox" id="notify_traffic_80" />
+        <span class="toggle-slider"></span>
+        <span class="toggle-label" data-i18n="settings.notify_traffic_80">Traffic over 80%</span>
       </label>
-      <label class="flex items-center gap-3 cursor-pointer">
-        <input type="checkbox" x-model="s.notify_device_over" class="accent-brand-500 w-4 h-4" />
-        <span class="text-sm">Device limit exceeded</span>
+      <label class="toggle-item">
+        <input type="checkbox" id="notify_device_over" checked />
+        <span class="toggle-slider"></span>
+        <span class="toggle-label" data-i18n="settings.notify_device_over">Device limit exceeded</span>
       </label>
-      <label class="flex items-center gap-3 cursor-pointer">
-        <input type="checkbox" x-model="s.notify_expiring" class="accent-brand-500 w-4 h-4" />
-        <span class="text-sm">Account expiring soon</span>
+      <label class="toggle-item">
+        <input type="checkbox" id="notify_expiring" checked />
+        <span class="toggle-slider"></span>
+        <span class="toggle-label" data-i18n="settings.notify_expiring">Account expiring soon</span>
       </label>
     </div>
   </div>
 
-  <!-- Save -->
-  <div class="flex items-center gap-3">
-    <button @click="save" class="btn-primary">
-      <i class="fas fa-save mr-1"></i> Save Settings
-    </button>
-    <span x-show="saveMsg" x-text="saveMsg" class="text-xs text-green-400"></span>
+  <!-- Exchange Rate -->
+  <div class="glass-card settings-section">
+    <div class="section-header">
+      <i class="fas fa-exchange-alt section-icon rate-icon"></i>
+      <h3 data-i18n="settings.exchange">Exchange Rate</h3>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>USDT/RUB</label>
+        <div class="rate-display">
+          <span id="current_rate">—</span>
+          <span class="rate-label">₽ per 1 USDT</span>
+          <button onclick="refreshRate()" class="btn-icon" title="Refresh">
+            <i class="fas fa-sync-alt"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+    <span class="form-hint">Auto-updated every 10 minutes from CoinGecko</span>
   </div>
+
+  <!-- Save -->
+  <div class="save-bar">
+    <button onclick="saveSettings()" class="btn-action btn-save">
+      <i class="fas fa-save"></i> <span data-i18n="settings.save">Save Settings</span>
+    </button>
+    <span id="saveResult" class="test-result"></span>
+  </div>
+
 </div>
+
+<style>
+.settings-page { max-width: 900px; margin: 0 auto; }
+.settings-section { margin-bottom: 1.5rem; padding: 1.5rem; }
+
+.section-header {
+  display: flex; align-items: center; gap: 0.75rem;
+  margin-bottom: 1.25rem; padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.08));
+}
+.section-header h3 { font-size: 1rem; font-weight: 600; margin: 0; }
+.section-icon { font-size: 1.1rem; color: var(--accent, #6366f1); }
+.telegram-icon { color: #0088cc; }
+.shield-icon { color: #f59e0b; }
+.bell-icon { color: #8b5cf6; }
+.rate-icon { color: #10b981; }
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.full-width { margin-top: 1rem; }
+.form-group label {
+  display: block; font-size: 0.8rem; font-weight: 500;
+  color: var(--text-muted, #94a3b8); margin-bottom: 0.4rem;
+}
+.form-input {
+  width: 100%; padding: 0.6rem 0.8rem; border-radius: 0.5rem;
+  background: var(--input-bg, rgba(255,255,255,0.05));
+  border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+  color: var(--text, #e2e8f0); font-size: 0.9rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+}
+.form-input:focus {
+  outline: none; border-color: var(--accent, #6366f1);
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+}
+.form-textarea { resize: vertical; font-family: monospace; }
+.form-hint { font-size: 0.75rem; color: var(--text-muted, #64748b); margin-top: 0.3rem; display: block; }
+
+.password-field { position: relative; }
+.password-field .form-input { padding-right: 2.5rem; }
+.btn-icon {
+  position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%);
+  background: none; border: none; color: var(--text-muted); cursor: pointer;
+  padding: 0.25rem; font-size: 0.85rem;
+}
+.btn-icon:hover { color: var(--text); }
+
+.section-footer { margin-top: 1rem; display: flex; align-items: center; gap: 0.75rem; }
+
+.btn-action {
+  padding: 0.5rem 1rem; border-radius: 0.5rem; border: none;
+  font-size: 0.85rem; font-weight: 500; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  transition: all 0.2s;
+}
+.btn-test { background: var(--accent, #6366f1); color: white; }
+.btn-test:hover { filter: brightness(1.15); transform: translateY(-1px); }
+.btn-save {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white;
+  padding: 0.7rem 1.5rem; font-size: 0.95rem;
+}
+.btn-save:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 4px 15px rgba(99,102,241,0.3); }
+
+.test-result { font-size: 0.85rem; font-weight: 500; }
+.test-result.ok { color: #10b981; }
+.test-result.err { color: #ef4444; }
+
+.info-box {
+  margin-top: 1.25rem; padding: 1rem; border-radius: 0.5rem;
+  background: var(--info-bg, rgba(99,102,241,0.08));
+  border: 1px solid var(--info-border, rgba(99,102,241,0.15));
+}
+.info-box h4 { font-size: 0.85rem; margin: 0 0 0.5rem; color: var(--accent, #6366f1); }
+.info-text { font-size: 0.8rem; color: var(--text-muted, #94a3b8); line-height: 1.6; }
+
+.toggle-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.toggle-item {
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.6rem 0.8rem; border-radius: 0.5rem;
+  background: var(--input-bg, rgba(255,255,255,0.03));
+  border: 1px solid var(--border-color, rgba(255,255,255,0.06));
+  cursor: pointer; transition: background 0.2s;
+}
+.toggle-item:hover { background: var(--input-bg, rgba(255,255,255,0.06)); }
+.toggle-item input { display: none; }
+.toggle-slider {
+  width: 36px; height: 20px; border-radius: 10px;
+  background: var(--toggle-off, #475569); position: relative;
+  transition: background 0.3s; flex-shrink: 0;
+}
+.toggle-slider::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: white; transition: transform 0.3s;
+}
+.toggle-item input:checked + .toggle-slider { background: var(--accent, #6366f1); }
+.toggle-item input:checked + .toggle-slider::after { transform: translateX(16px); }
+.toggle-label { font-size: 0.85rem; }
+
+.rate-display {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.6rem 0.8rem; border-radius: 0.5rem;
+  background: var(--input-bg, rgba(255,255,255,0.05));
+  border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+}
+.rate-display span:first-child { font-size: 1.25rem; font-weight: 700; }
+.rate-label { font-size: 0.8rem; color: var(--text-muted); }
+.rate-display .btn-icon { position: static; transform: none; }
+
+.save-bar { display: flex; align-items: center; gap: 1rem; margin-top: 1.5rem; padding: 1rem 0; }
+
+@media (max-width: 640px) {
+  .form-grid, .toggle-grid { grid-template-columns: 1fr; }
+}
+</style>
 {% endblock %}
 
 {% block scripts %}
 <script>
-function settingsApp() {
-  return {
-    s: {}, marzbanResult: '', marzbanOk: false, telegramResult: '', telegramOk: false, saveMsg: '',
-    async init() {
-      const data = await (await fetch('/api/settings')).json();
-      data.track_inbounds_text = (data.track_inbounds || []).join('\n');
-      data.ignore_inbounds_text = (data.ignore_inbounds || []).join('\n');
-      this.s = data;
-    },
-    async testMarzban() {
-      try { const r = await (await fetch('/api/settings/test-marzban', {method:'POST'})).json();
-        this.marzbanResult = r.message; this.marzbanOk = r.ok;
-      } catch { this.marzbanResult = 'Connection failed'; this.marzbanOk = false; }
-    },
-    async testTelegram() {
-      try { const r = await (await fetch('/api/settings/test-telegram', {method:'POST'})).json();
-        this.telegramResult = r.message; this.telegramOk = r.ok;
-      } catch { this.telegramResult = 'Connection failed'; this.telegramOk = false; }
-    },
-    async save() {
-      const payload = { ...this.s };
-      payload.track_inbounds = payload.track_inbounds_text.split('\n').map(s=>s.trim()).filter(Boolean);
-      payload.ignore_inbounds = payload.ignore_inbounds_text.split('\n').map(s=>s.trim()).filter(Boolean);
-      delete payload.track_inbounds_text; delete payload.ignore_inbounds_text;
-      await fetch('/api/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-      this.saveMsg = 'Saved!'; setTimeout(() => this.saveMsg = '', 2000);
-    }
-  };
+async function loadSettings() {
+  try {
+    const data = await fetch('/api/settings').then(r => r.json());
+    document.getElementById('marzban_url').value = data.marzban_url || '';
+    document.getElementById('marzban_username').value = data.marzban_username || '';
+    document.getElementById('marzban_password').value = data.marzban_password || '';
+    document.getElementById('bot_token').value = data.bot_token || '';
+    document.getElementById('admin_ids').value = data.admin_ids || '';
+    document.getElementById('track_inbounds').value = (data.track_inbounds || []).join('\n');
+    document.getElementById('ignore_inbounds').value = (data.ignore_inbounds || []).join('\n');
+    document.getElementById('ignored_ips').value = data.ignored_ips || '';
+    document.getElementById('notify_new_user').checked = data.notify_new_user !== false;
+    document.getElementById('notify_traffic_80').checked = data.notify_traffic_80 === true;
+    document.getElementById('notify_device_over').checked = data.notify_device_over !== false;
+    document.getElementById('notify_expiring').checked = data.notify_expiring !== false;
+  } catch {}
+  refreshRate();
 }
+
+async function refreshRate() {
+  try {
+    const d = await fetch('/api/finance/summary').then(r => r.json());
+    document.getElementById('current_rate').textContent = d.rate ? d.rate.toFixed(2) : '—';
+  } catch {}
+}
+
+function togglePassword(id) {
+  const inp = document.getElementById(id);
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+async function testMarzban() {
+  const el = document.getElementById('marzbanResult');
+  el.textContent = '...'; el.className = 'test-result';
+  try {
+    const r = await fetch('/api/settings/test-marzban', {method:'POST'}).then(r => r.json());
+    el.textContent = r.message; el.className = 'test-result ' + (r.ok ? 'ok' : 'err');
+  } catch { el.textContent = 'Failed'; el.className = 'test-result err'; }
+}
+
+async function testTelegram() {
+  const el = document.getElementById('telegramResult');
+  el.textContent = '...'; el.className = 'test-result';
+  try {
+    const r = await fetch('/api/settings/test-telegram', {method:'POST'}).then(r => r.json());
+    el.textContent = r.message; el.className = 'test-result ' + (r.ok ? 'ok' : 'err');
+  } catch { el.textContent = 'Failed'; el.className = 'test-result err'; }
+}
+
+async function saveSettings() {
+  const el = document.getElementById('saveResult');
+  const payload = {
+    marzban_url: document.getElementById('marzban_url').value,
+    marzban_username: document.getElementById('marzban_username').value,
+    marzban_password: document.getElementById('marzban_password').value,
+    bot_token: document.getElementById('bot_token').value,
+    admin_ids: document.getElementById('admin_ids').value,
+    track_inbounds: document.getElementById('track_inbounds').value.split('\n').map(s=>s.trim()).filter(Boolean),
+    ignore_inbounds: document.getElementById('ignore_inbounds').value.split('\n').map(s=>s.trim()).filter(Boolean),
+    ignored_ips: document.getElementById('ignored_ips').value,
+    notify_new_user: document.getElementById('notify_new_user').checked,
+    notify_traffic_80: document.getElementById('notify_traffic_80').checked,
+    notify_device_over: document.getElementById('notify_device_over').checked,
+    notify_expiring: document.getElementById('notify_expiring').checked,
+  };
+  try {
+    await fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    el.textContent = '✓ Saved'; el.className = 'test-result ok';
+    setTimeout(() => el.textContent = '', 2000);
+  } catch { el.textContent = 'Error'; el.className = 'test-result err'; }
+}
+
+loadSettings();
 </script>
 {% endblock %}

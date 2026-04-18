@@ -143,8 +143,8 @@ const T = {
   // Footer
   "footer.version": { en: "Nemo Tracker v0.1 · Open Source", ru: "Nemo Tracker v0.1 · Open Source" },
 
-  // Finance
   "nav.finance": { en: "Finance", ru: "Финансы" },
+  "nav.analytics": { en: "Analytics", ru: "Аналитика" },
   "fin.title": { en: "Finance", ru: "Финансы" },
   "fin.today": { en: "Today", ru: "Сегодня" },
   "fin.week": { en: "This Week", ru: "Эта неделя" },
@@ -173,6 +173,25 @@ const T = {
   "fin.active_subs": { en: "Active Subscriptions", ru: "Активные подписки" },
   "fin.new_this_month": { en: "New This Month", ru: "Новые за месяц" },
   "fin.subscribers": { en: "subscribers", ru: "подписчиков" },
+
+  // Analytics
+  "analytics.title": { en: "Traffic Analytics", ru: "Аналитика трафика" },
+  "analytics.traffic_chart": { en: "Total Traffic (30 days)", ru: "Общий трафик (30 дней)" },
+  "analytics.top_users": { en: "Top-10 Traffic Consumers", ru: "Топ-10 потребителей трафика" },
+  "analytics.distribution": { en: "Traffic Distribution", ru: "Распределение нагрузки" },
+  "analytics.anomalies": { en: "Anomalies", ru: "Аномалии" },
+  "analytics.username": { en: "Username", ru: "Пользователь" },
+  "analytics.used": { en: "Used", ru: "Использовано" },
+  "analytics.limit": { en: "Limit", ru: "Лимит" },
+  "analytics.avg": { en: "Average", ru: "Среднее" },
+  "analytics.times_avg": { en: "x average", ru: "x от среднего" },
+  "analytics.anomaly_desc": { en: "uses significantly more traffic than average", ru: "использует значительно больше трафика, чем в среднем" },
+  "analytics.no_anomalies": { en: "No anomalies detected", ru: "Аномалий не обнаружено" },
+  "analytics.no_data": { en: "No data available", ru: "Нет данных" },
+  "analytics.gb": { en: "GB", ru: "ГБ" },
+  "analytics.range": { en: "Range", ru: "Диапазон" },
+  "analytics.users_count": { en: "Users", ru: "Пользователи" },
+  "analytics.loading": { en: "Loading...", ru: "Загрузка..." },
 };
 
 // Fetch online count for sidebar badge
