@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reseller Panel — Nemo Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    :root {
+      --bg: #f5f7fa; --bg-card: #ffffff; --bg-input: #f0f2f5;
+      --text: #1a1a2e; --text-sec: #6c757d; --text-muted: #adb5bd;
+      --border: #dee2e6; --primary: #6c5ce7; --primary-hover: #5a4bd1;
+      --danger: #e74c3c; --success: #00b894; --warning: #fdcb6e;
+      --radius: 12px; --shadow: 0 2px 12px rgba(0,0,0,.08);
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* Header */
+    .header { background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; }
+    .header-brand { display: flex; align-items: center; gap: .75rem; font-weight: 700; font-size: 1.2rem; }
+    .header-brand .logo { width: 36px; height: 36px; background: var(--primary); color: #fff; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 800; }
+    .header-actions { display: flex; gap: .5rem; align-items: center; }
+
+    /* Login */
+    .login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .login-card { background: var(--bg-card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 2.5rem; width: 90%; max-width: 400px; }
+    .login-card h2 { text-align: center; margin-bottom: 1.5rem; }
+    .login-card .field { margin-bottom: 1rem; }
+    .login-card label { display: block; font-size: .85rem; color: var(--text-sec); margin-bottom: .3rem; }
+    .login-card input { width: 100%; padding: .7rem 1rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); font-size: .95rem; }
+
+    /* Buttons */
+    .btn { padding: .55rem 1.2rem; border-radius: 8px; border: none; cursor: pointer; font-size: .9rem; font-weight: 500; transition: .15s; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-outline { background: transparent; color: var(--primary); border: 1px solid var(--primary); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-sm { padding: .35rem .75rem; font-size: .82rem; }
+
+    /* Dashboard */
+    .dashboard { display: none; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 1.5rem 2rem; }
+    .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .stat-card { background: var(--bg-card); border-radius: var(--radius); padding: 1.25rem; box-shadow: var(--shadow); }
+    .stat-card .stat-value { font-size: 1.8rem; font-weight: 700; }
+    .stat-card .stat-label { font-size: .85rem; color: var(--text-sec); margin-top: .25rem; }
+
+    .card { background: var(--bg-card); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 1.5rem; overflow: hidden; }
+    .card-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .card-header h3 { font-size: 1rem; font-weight: 600; }
+    .card-body { padding: 1.25rem; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; padding: .7rem 1rem; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--text-sec); border-bottom: 1px solid var(--border); }
+    td { padding: .65rem 1rem; border-bottom: 1px solid var(--border); font-size: .9rem; }
+    tr:hover td { background: var(--bg-input); }
+    .empty { text-align: center; padding: 2rem; color: var(--text-muted); }
+
+    .badge { padding: .2rem .6rem; border-radius: 6px; font-size: .78rem; font-weight: 500; }
+    .badge-active { background: #d4edda; color: #155724; }
+    .badge-expired { background: #f8d7da; color: #721c24; }
+    .badge-disabled { background: #e2e3e5; color: #383d41; }
+
+    /* Create user form */
+    .form-row { display: flex; gap: .75rem; flex-wrap: wrap; margin-bottom: .75rem; align-items: flex-end; }
+    .form-group { display: flex; flex-direction: column; gap: .3rem; }
+    .form-group label { font-size: .82rem; color: var(--text-sec); }
+    .form-group input, .form-group select { padding: .55rem .8rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); font-size: .9rem; }
+
+    /* Transaction amounts */
+    .amount-pos { color: var(--success); }
+    .amount-neg { color: var(--danger); }
+
+    /* Toast */
+    .toast { position: fixed; bottom: 2rem; right: 2rem; background: var(--text); color: #fff; padding: .75rem 1.5rem; border-radius: 8px; font-size: .9rem; opacity: 0; transition: opacity .3s; pointer-events: none; }
+    .toast.show { opacity: 1; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 1.25rem; }
+    .tab { padding: .6rem 1.2rem; cursor: pointer; font-size: .9rem; color: var(--text-sec); border-bottom: 2px solid transparent; margin-bottom: -2px; }
+    .tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+
+    @media (max-width: 768px) {
+      .container { padding: 1rem; }
+      .stats-row { grid-template-columns: 1fr 1fr; }
+      .form-row { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Login -->
+<div class="login-wrap" id="loginSection">
+  <div class="login-card">
+    <h2>🤝 <span data-i18n="rp.title">Reseller Panel</span></h2>
+    <div class="field">
+      <label data-i18n="rp.api_key_label">API Key</label>
+      <input type="text" id="apiKeyInput" placeholder="your-api-key-here" data-i18n-placeholder="rp.api_key_ph">
+    </div>
+    <button class="btn btn-primary" style="width:100%;margin-top:.5rem" onclick="doLogin()" data-i18n="rp.login_btn">Login</button>
+    <p id="loginError" style="color:var(--danger);margin-top:.75rem;text-align:center;display:none"></p>
+  </div>
+</div>
+
+<!-- Dashboard -->
+<div class="dashboard" id="dashSection">
+  <div class="header">
+    <div class="header-brand">
+      <div class="logo">N</div>
+      <span data-i18n="rp.title">Reseller Panel</span>
+      <span style="color:var(--text-sec);font-weight:400;font-size:.9rem" id="resellerName"></span>
+    </div>
+    <div class="header-actions">
+      <select id="langSelect" onchange="setLang(this.value)" style="padding:.35rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-card)">
+        <option value="en">🇬🇧 English</option>
+        <option value="ru">🇷🇺 Русский</option>
+      </select>
+      <button class="btn btn-outline btn-sm" onclick="doLogout()" data-i18n="rp.logout">Logout</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <!-- Stats -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-value" id="sBalance">—</div>
+        <div class="stat-label" data-i18n="rp.balance">Balance (₽)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="sUsers">—</div>
+        <div class="stat-label" data-i18n="rp.my_users">My Users</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="sCommission">—</div>
+        <div class="stat-label" data-i18n="rp.commission">Commission</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="sMaxUsers">—</div>
+        <div class="stat-label" data-i18n="rp.user_limit">User Limit</div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('create')" id="tabCreate" data-i18n="rp.tab_create">Create User</div>
+      <div class="tab" onclick="switchTab('users')" id="tabUsers" data-i18n="rp.tab_users">My Users</div>
+      <div class="tab" onclick="switchTab('transactions')" id="tabTx" data-i18n="rp.tab_transactions">Transactions</div>
+    </div>
+
+    <!-- Create User -->
+    <div class="card" id="panelCreate">
+      <div class="card-header">
+        <h3 data-i18n="rp.create_user_title">Create User</h3>
+      </div>
+      <div class="card-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label data-i18n="rp.username">Username</label>
+            <input type="text" id="fNewUser" placeholder="username" style="min-width:180px">
+          </div>
+          <div class="form-group">
+            <label data-i18n="rp.tariff">Tariff</label>
+            <select id="fTariff" style="min-width:200px"></select>
+          </div>
+          <button class="btn btn-primary" onclick="createUser()" data-i18n="rp.create_btn">Create</button>
+        </div>
+        <p style="font-size:.82rem;color:var(--text-sec)" id="costPreview"></p>
+      </div>
+    </div>
+
+    <!-- Users Table -->
+    <div class="card" id="panelUsers" style="display:none">
+      <div class="card-header">
+        <h3 data-i18n="rp.my_users">My Users</h3>
+        <button class="btn btn-sm btn-outline" onclick="loadUsers()">🔄</button>
+      </div>
+      <div class="card-body" style="padding:0">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="rp.username">Username</th>
+              <th data-i18n="rp.status">Status</th>
+              <th data-i18n="rp.expire">Expires</th>
+              <th data-i18n="rp.created">Created</th>
+              <th data-i18n="rp.actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="usersBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Transactions -->
+    <div class="card" id="panelTx" style="display:none">
+      <div class="card-header">
+        <h3 data-i18n="rp.tab_transactions">Transactions</h3>
+      </div>
+      <div class="card-body" style="padding:0">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="rp.tx_date">Date</th>
+              <th data-i18n="rp.tx_type">Type</th>
+              <th data-i18n="rp.tx_amount">Amount</th>
+              <th data-i18n="rp.tx_user">User</th>
+              <th data-i18n="rp.tx_desc">Description</th>
+            </tr>
+          </thead>
+          <tbody id="txBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Renew Modal -->
+    <div id="renewModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:1000;display:none;align-items:center;justify-content:center">
+      <div style="background:var(--bg-card);border-radius:var(--radius);padding:1.5rem;width:90%;max-width:400px;box-shadow:var(--shadow)">
+        <h3 style="margin-bottom:1rem" data-i18n="rp.renew_title">Renew User</h3>
+        <p id="renewUserName" style="font-weight:600;margin-bottom:.75rem"></p>
+        <div class="form-group" style="margin-bottom:1rem">
+          <label data-i18n="rp.tariff">Tariff</label>
+          <select id="fRenewTariff"></select>
+        </div>
+        <div style="display:flex;gap:.5rem;justify-content:flex-end">
+          <button class="btn btn-outline" onclick="closeRenewModal()" data-i18n="rp.cancel">Cancel</button>
+          <button class="btn btn-primary" onclick="doRenew()" data-i18n="rp.renew_btn">Renew</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const _T = {
+  "rp.title": { en: "Reseller Panel", ru: "Панель реселлера" },
+  "rp.api_key_label": { en: "API Key", ru: "API ключ" },
+  "rp.api_key_ph": { en: "your-api-key-here", ru: "ваш-api-ключ" },
+  "rp.login_btn": { en: "Login", ru: "Войти" },
+  "rp.logout": { en: "Logout", ru: "Выйти" },
+  "rp.balance": { en: "Balance (₽)", ru: "Баланс (₽)" },
+  "rp.my_users": { en: "My Users", ru: "Мои пользователи" },
+  "rp.commission": { en: "Commission", ru: "Комиссия" },
+  "rp.user_limit": { en: "User Limit", ru: "Лимит пользователей" },
+  "rp.tab_create": { en: "Create User", ru: "Создать пользователя" },
+  "rp.tab_users": { en: "My Users", ru: "Мои пользователи" },
+  "rp.tab_transactions": { en: "Transactions", ru: "Транзакции" },
+  "rp.create_user_title": { en: "Create User", ru: "Создать пользователя" },
+  "rp.username": { en: "Username", ru: "Пользователь" },
+  "rp.tariff": { en: "Tariff", ru: "Тариф" },
+  "rp.create_btn": { en: "Create", ru: "Создать" },
+  "rp.status": { en: "Status", ru: "Статус" },
+  "rp.expire": { en: "Expires", ru: "Истекает" },
+  "rp.created": { en: "Created", ru: "Создан" },
+  "rp.actions": { en: "Actions", ru: "Действия" },
+  "rp.renew": { en: "Renew", ru: "Продлить" },
+  "rp.renew_title": { en: "Renew User", ru: "Продлить пользователя" },
+  "rp.renew_btn": { en: "Renew", ru: "Продлить" },
+  "rp.cancel": { en: "Cancel", ru: "Отмена" },
+  "rp.tx_date": { en: "Date", ru: "Дата" },
+  "rp.tx_type": { en: "Type", ru: "Тип" },
+  "rp.tx_amount": { en: "Amount", ru: "Сумма" },
+  "rp.tx_user": { en: "User", ru: "Пользователь" },
+  "rp.tx_desc": { en: "Description", ru: "Описание" },
+  "rp.cost_preview": { en: "Cost after commission", ru: "Стоимость с учётом комиссии" },
+  "rp.unlimited": { en: "Unlimited", ru: "Безлимит" },
+  "rp.no_users": { en: "No users yet", ru: "Пользователей пока нет" },
+  "rp.no_transactions": { en: "No transactions yet", ru: "Транзакций пока нет" },
+  "rp.active": { en: "Active", ru: "Активен" },
+  "rp.expired": { en: "Expired", ru: "Истёк" },
+  "rp.disabled": { en: "Disabled", ru: "Отключён" },
+  "rp.err_login": { en: "Invalid API key", ru: "Неверный API ключ" },
+  "rp.err_create": { en: "Failed to create user", ru: "Ошибка создания" },
+  "rp.err_renew": { en: "Failed to renew", ru: "Ошибка продления" },
+  "rp.created_msg": { en: "User created!", ru: "Пользователь создан!" },
+  "rp.renewed_msg": { en: "User renewed!", ru: "Пользователь продлён!" },
+  "rp.err_balance": { en: "Insufficient balance", ru: "Недостаточно средств" },
+};
+
+let _lang = localStorage.getItem("nemo_rp_lang") || "en";
+let token = localStorage.getItem("nemo_rp_token") || "";
+let resellerInfo = null;
+let tariffs = [];
+let myUsers = [];
+
+function t(key) { const e = _T[key]; return e ? (e[_lang] || e.en || key) : key; }
+function setLang(lang) {
+  _lang = lang;
+  localStorage.setItem("nemo_rp_lang", lang);
+  document.getElementById('langSelect').value = lang;
+  document.querySelectorAll("[data-i18n]").forEach(el => el.textContent = t(el.dataset.i18n));
+  document.querySelectorAll("[data-i18n-placeholder]").forEach(el => el.placeholder = t(el.dataset.i18nPlaceholder));
+}
+
+function applyTranslations() { setLang(_lang); }
+
+function authHeaders() { return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }; }
+
+async function doLogin() {
+  const apiKey = document.getElementById('apiKeyInput').value.trim();
+  if (!apiKey) return;
+  try {
+    const r = await fetch('/api/r/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ api_key: apiKey }) });
+    if (!r.ok) throw new Error();
+    const data = await r.json();
+    token = data.token;
+    resellerInfo = data.reseller;
+    localStorage.setItem("nemo_rp_token", token);
+    showDashboard();
+  } catch {
+    document.getElementById('loginError').style.display = 'block';
+    document.getElementById('loginError').textContent = t('rp.err_login');
+  }
+}
+
+function doLogout() {
+  token = '';
+  localStorage.removeItem("nemo_rp_token");
+  document.getElementById('dashSection').style.display = 'none';
+  document.getElementById('loginSection').style.display = 'flex';
+}
+
+async function showDashboard() {
+  document.getElementById('loginSection').style.display = 'none';
+  document.getElementById('dashSection').style.display = 'block';
+  applyTranslations();
+  await loadMe();
+  await loadTariffs();
+  loadUsers();
+  loadTransactions();
+}
+
+async function loadMe() {
+  try {
+    const r = await fetch('/api/r/me', { headers: authHeaders() });
+    if (!r.ok) { doLogout(); return; }
+    resellerInfo = await r.json();
+    document.getElementById('resellerName').textContent = resellerInfo.display_name;
+    document.getElementById('sBalance').textContent = resellerInfo.balance_rub.toFixed(2) + '₽';
+    document.getElementById('sUsers').textContent = resellerInfo.created_users_count;
+    document.getElementById('sCommission').textContent = resellerInfo.commission_percent + '%';
+    document.getElementById('sMaxUsers').textContent = resellerInfo.max_users || t('rp.unlimited');
+  } catch { doLogout(); }
+}
+
+async function loadTariffs() {
+  tariffs = await fetch('/api/r/tariffs').then(r => r.json());
+  const sel = document.getElementById('fTariff');
+  const sel2 = document.getElementById('fRenewTariff');
+  const opts = tariffs.map(t => `<option value="${t.id}">${t.name} — ${t.price_rub}₽ / ${t.duration_days}d</option>`).join('');
+  sel.innerHTML = opts;
+  sel2.innerHTML = opts;
+  updateCostPreview();
+  sel.onchange = updateCostPreview;
+}
+
+function updateCostPreview() {
+  const tid = parseInt(document.getElementById('fTariff').value);
+  const tariff = tariffs.find(t => t.id === tid);
+  if (tariff && resellerInfo) {
+    const cost = tariff.price_rub * (1 - resellerInfo.commission_percent / 100);
+    document.getElementById('costPreview').textContent = t('rp.cost_preview') + ': ' + cost.toFixed(2) + '₽';
+  }
+}
+
+async function loadUsers() {
+  try {
+    myUsers = await fetch('/api/r/users', { headers: authHeaders() }).then(r => r.json());
+    const body = document.getElementById('usersBody');
+    if (!myUsers.length) {
+      body.innerHTML = `<tr><td colspan="5" class="empty">${t('rp.no_users')}</td></tr>`;
+      return;
+    }
+    body.innerHTML = myUsers.map(u => `<tr>
+      <td>${esc(u.username)}</td>
+      <td><span class="badge badge-${u.status==='active'?'active':u.status==='expired'?'expired':'disabled'}">${u.status}</span></td>
+      <td>${u.expire ? new Date(u.expire).toLocaleDateString() : '—'}</td>
+      <td>${u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
+      <td><button class="btn btn-sm btn-primary" onclick="openRenewModal('${esc(u.username)}')">${t('rp.renew')}</button></td>
+    </tr>`).join('');
+  } catch {}
+}
+
+async function loadTransactions() {
+  try {
+    const txs = await fetch('/api/r/transactions', { headers: authHeaders() }).then(r => r.json());
+    const body = document.getElementById('txBody');
+    if (!txs.length) {
+      body.innerHTML = `<tr><td colspan="5" class="empty">${t('rp.no_transactions')}</td></tr>`;
+      return;
+    }
+    body.innerHTML = txs.map(tx => `<tr>
+      <td>${tx.created_at ? new Date(tx.created_at).toLocaleString() : '—'}</td>
+      <td>${tx.type}</td>
+      <td class="${tx.amount>=0?'amount-pos':'amount-neg'}">${tx.amount>=0?'+':''}${tx.amount.toFixed(2)}₽</td>
+      <td>${esc(tx.username||'—')}</td>
+      <td>${esc(tx.description||'')}</td>
+    </tr>`).join('');
+  } catch {}
+}
+
+async function createUser() {
+  const username = document.getElementById('fNewUser').value.trim();
+  const tariff_id = parseInt(document.getElementById('fTariff').value);
+  if (!username) return;
+  try {
+    const r = await fetch('/api/r/users/create', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ username, tariff_id }) });
+    if (!r.ok) { const e = await r.json(); toast(e.detail || t('rp.err_create')); return; }
+    toast(t('rp.created_msg'));
+    document.getElementById('fNewUser').value = '';
+    loadMe(); loadUsers(); loadTransactions();
+  } catch { toast(t('rp.err_create')); }
+}
+
+let renewUsername = '';
+function openRenewModal(username) {
+  renewUsername = username;
+  document.getElementById('renewUserName').textContent = username;
+  document.getElementById('renewModal').style.display = 'flex';
+}
+function closeRenewModal() { document.getElementById('renewModal').style.display = 'none'; }
+
+async function doRenew() {
+  const tariff_id = parseInt(document.getElementById('fRenewTariff').value);
+  try {
+    const r = await fetch(`/api/r/users/${renewUsername}/renew`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ tariff_id }) });
+    if (!r.ok) { const e = await r.json(); toast(e.detail || t('rp.err_renew')); return; }
+    toast(t('rp.renewed_msg'));
+    closeRenewModal();
+    loadMe(); loadUsers(); loadTransactions();
+  } catch { toast(t('rp.err_renew')); }
+}
+
+function switchTab(tab) {
+  document.getElementById('panelCreate').style.display = tab==='create' ? '' : 'none';
+  document.getElementById('panelUsers').style.display = tab==='users' ? '' : 'none';
+  document.getElementById('panelTx').style.display = tab==='transactions' ? '' : 'none';
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+  if (tab==='users') loadUsers();
+  if (tab==='transactions') loadTransactions();
+}
+
+function esc(s) { return String(s||'').replace(/</g,'&lt;'); }
+function toast(msg) { const el=document.getElementById('toast'); el.textContent=msg; el.className='toast show'; setTimeout(()=>el.className='toast',3000); }
+
+// Auto-login
+if (token) { showDashboard(); } else { applyTranslations(); }
+document.getElementById('langSelect').value = _lang;
+</script>
+</body>
+</html>

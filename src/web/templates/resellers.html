@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% block title %}Resellers — Nemo Tracker{% endblock %}
+{% block topbar_title %}nav.resellers{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;">
+  <h2 data-i18n="reseller.title">Resellers</h2>
+  <button class="btn btn-primary" onclick="openCreateModal()" data-i18n="reseller.add_btn">Add Reseller</button>
+</div>
+
+<!-- Stats -->
+<div class="stats-row" id="statsRow">
+  <div class="stat-card"><div class="stat-value" id="statTotal">0</div><div class="stat-label" data-i18n="reseller.stat_total">Total Resellers</div></div>
+  <div class="stat-card"><div class="stat-value" id="statBalance">0₽</div><div class="stat-label" data-i18n="reseller.stat_balance">Total Balance</div></div>
+  <div class="stat-card"><div class="stat-value" id="statUsers">0</div><div class="stat-label" data-i18n="reseller.stat_users">Users Created</div></div>
+  <div class="stat-card"><div class="stat-value" id="statActive">0</div><div class="stat-label" data-i18n="reseller.stat_active">Active</div></div>
+</div>
+
+<!-- Table -->
+<div class="card">
+  <table class="data-table" id="resellerTable">
+    <thead>
+      <tr>
+        <th data-i18n="reseller.name">Name</th>
+        <th data-i18n="reseller.username">Username</th>
+        <th data-i18n="reseller.balance">Balance</th>
+        <th data-i18n="reseller.commission">Commission</th>
+        <th data-i18n="reseller.users">Users</th>
+        <th data-i18n="reseller.status">Status</th>
+        <th data-i18n="reseller.api_key">API Key</th>
+        <th data-i18n="reseller.actions">Actions</th>
+      </tr>
+    </thead>
+    <tbody id="resellerBody"></tbody>
+  </table>
+</div>
+
+<!-- Create/Edit Modal -->
+<div class="modal-overlay" id="modal" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle" data-i18n="reseller.create_title">Create Reseller</h3>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <label data-i18n="reseller.username">Username</label>
+      <input type="text" id="fUsername" placeholder="reseller1" data-i18n-placeholder="reseller.username_ph">
+      <label data-i18n="reseller.display_name">Display Name</label>
+      <input type="text" id="fDisplayName" placeholder="My Reseller" data-i18n-placeholder="reseller.display_name_ph">
+      <label data-i18n="reseller.commission_pct">Commission (%)</label>
+      <input type="number" id="fCommission" value="10" min="0" max="100" step="1">
+      <label data-i18n="reseller.max_users">Max Users</label>
+      <input type="number" id="fMaxUsers" placeholder="Unlimited" min="1">
+      <label data-i18n="reseller.initial_balance">Initial Balance (₽)</label>
+      <input type="number" id="fBalance" value="0" min="0" step="0.01">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()" data-i18n="reseller.cancel">Cancel</button>
+      <button class="btn btn-primary" id="modalSaveBtn" onclick="saveReseller()" data-i18n="reseller.save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Top-up Modal -->
+<div class="modal-overlay" id="topupModal" style="display:none">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <h3 data-i18n="reseller.topup_title">Top-up Balance</h3>
+      <button class="modal-close" onclick="closeTopupModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="topupName"></p>
+      <label data-i18n="reseller.topup_amount">Amount (₽)</label>
+      <input type="number" id="fTopupAmount" min="0.01" step="0.01" value="1000">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeTopupModal()" data-i18n="reseller.cancel">Cancel</button>
+      <button class="btn btn-primary" onclick="doTopup()" data-i18n="reseller.topup_btn">Top-up</button>
+    </div>
+  </div>
+</div>
+
+<style>
+.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center}
+.modal{background:var(--bg-secondary,#1e1e2e);border-radius:12px;padding:0;width:90%;max-width:500px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.modal-header{display:flex;align-items:center;justify-content:space-between;padding:1.25rem 1.5rem;border-bottom:1px solid var(--border,#2a2a3a)}
+.modal-header h3{margin:0;font-size:1.1rem}
+.modal-close{background:none;border:none;color:var(--text-secondary,#888);font-size:1.5rem;cursor:pointer}
+.modal-body{padding:1.5rem;display:flex;flex-direction:column;gap:0.75rem}
+.modal-body label{font-size:.85rem;color:var(--text-secondary,#aaa);margin-bottom:-0.5rem}
+.modal-body input,.modal-body select,.modal-body textarea{padding:0.6rem 0.8rem;border:1px solid var(--border,#2a2a3a);border-radius:8px;background:var(--bg-primary,#12121e);color:var(--text-primary,#e0e0e0);font-size:.9rem}
+.modal-footer{display:flex;gap:0.75rem;justify-content:flex-end;padding:1rem 1.5rem;border-top:1px solid var(--border,#2a2a3a)}
+.btn{padding:0.5rem 1.2rem;border-radius:8px;border:none;cursor:pointer;font-size:.9rem;font-weight:500}
+.btn-primary{background:#6c5ce7;color:#fff}
+.btn-secondary{background:var(--bg-primary,#12121e);color:var(--text-secondary,#aaa);border:1px solid var(--border,#2a2a3a)}
+.btn-sm{padding:0.3rem 0.7rem;font-size:.8rem}
+.btn-danger{background:#e74c3c;color:#fff}
+.btn-success{background:#00b894;color:#fff}
+.api-key-cell{font-family:monospace;font-size:.75rem;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+</style>
+
+<script>
+let resellers = [];
+let editingId = null;
+let topupId = null;
+
+async function loadResellers() {
+  resellers = await fetch('/api/resellers').then(r=>r.json());
+  renderTable();
+  renderStats();
+}
+
+function renderStats() {
+  document.getElementById('statTotal').textContent = resellers.length;
+  document.getElementById('statBalance').textContent = resellers.reduce((s,r)=>s+r.balance_rub,0).toFixed(2)+'₽';
+  document.getElementById('statUsers').textContent = resellers.reduce((s,r)=>s+r.created_users_count,0);
+  document.getElementById('statActive').textContent = resellers.filter(r=>r.is_active).length;
+}
+
+function renderTable() {
+  const body = document.getElementById('resellerBody');
+  body.innerHTML = resellers.map(r => `
+    <tr>
+      <td>${esc(r.display_name)}</td>
+      <td>${esc(r.username)}</td>
+      <td>${r.balance_rub.toFixed(2)}₽</td>
+      <td>${r.commission_percent}%</td>
+      <td>${r.created_users_count}${r.max_users ? '/'+r.max_users : ''}</td>
+      <td><span class="status-badge ${r.is_active?'status-active':'status-disabled'}">${r.is_active ? t('reseller.active') : t('reseller.inactive')}</span></td>
+      <td class="api-key-cell" title="${r.api_key}">${r.api_key}</td>
+      <td>
+        <button class="btn btn-sm btn-secondary" onclick="copyKey('${r.api_key}')" title="${t('reseller.copy_key')}">📋</button>
+        <button class="btn btn-sm btn-secondary" onclick="openEditModal(${r.id})">✏️</button>
+        <button class="btn btn-sm ${r.is_active?'btn-danger':'btn-success'}" onclick="toggleReseller(${r.id})">${r.is_active?'⏸':'▶'}</button>
+        <button class="btn btn-sm btn-primary" onclick="openTopupModal(${r.id},'${esc(r.display_name)}')">💰</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteReseller(${r.id})">🗑</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function esc(s){return String(s||'').replace(/</g,'&lt;')}
+
+function openCreateModal(){
+  editingId=null;
+  document.getElementById('modalTitle').textContent=t('reseller.create_title');
+  document.getElementById('fUsername').value='';
+  document.getElementById('fDisplayName').value='';
+  document.getElementById('fCommission').value='10';
+  document.getElementById('fMaxUsers').value='';
+  document.getElementById('fBalance').value='0';
+  document.getElementById('fUsername').disabled=false;
+  document.getElementById('modal').style.display='flex';
+}
+
+function openEditModal(id){
+  const r=resellers.find(x=>x.id===id);
+  if(!r)return;
+  editingId=id;
+  document.getElementById('modalTitle').textContent=t('reseller.edit_title');
+  document.getElementById('fUsername').value=r.username;
+  document.getElementById('fDisplayName').value=r.display_name;
+  document.getElementById('fCommission').value=r.commission_percent;
+  document.getElementById('fMaxUsers').value=r.max_users||'';
+  document.getElementById('fBalance').value=r.balance_rub;
+  document.getElementById('fUsername').disabled=true;
+  document.getElementById('modal').style.display='flex';
+}
+
+function closeModal(){document.getElementById('modal').style.display='none'}
+
+async function saveReseller(){
+  const payload={
+    username:document.getElementById('fUsername').value.trim(),
+    display_name:document.getElementById('fDisplayName').value.trim(),
+    commission_percent:parseFloat(document.getElementById('fCommission').value),
+    max_users:document.getElementById('fMaxUsers').value?parseInt(document.getElementById('fMaxUsers').value):null,
+    balance_rub:parseFloat(document.getElementById('fBalance').value),
+  };
+  if(!payload.username){toast(t('reseller.err_username'));return}
+  try{
+    if(editingId){
+      await fetch(`/api/resellers/${editingId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      toast(t('reseller.updated'));
+    }else{
+      await fetch('/api/resellers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      toast(t('reseller.created'));
+    }
+    closeModal();
+    loadResellers();
+  }catch(e){toast(t('reseller.err_save')+': '+e.message)}
+}
+
+async function toggleReseller(id){
+  try{await fetch(`/api/resellers/${id}/toggle`,{method:'POST'});loadResellers()}catch(e){toast(t('reseller.err_toggle'))}
+}
+
+async function deleteReseller(id){
+  if(!confirm(t('reseller.confirm_delete')))return;
+  try{await fetch(`/api/resellers/${id}`,{method:'DELETE'});loadResellers();toast(t('reseller.deleted'))}catch(e){toast(t('reseller.err_delete'))}
+}
+
+function copyKey(key){navigator.clipboard.writeText(key);toast(t('reseller.copied'))}
+
+function openTopupModal(id,name){
+  topupId=id;
+  document.getElementById('topupName').textContent=name;
+  document.getElementById('fTopupAmount').value='1000';
+  document.getElementById('topupModal').style.display='flex';
+}
+function closeTopupModal(){document.getElementById('topupModal').style.display='none'}
+
+async function doTopup(){
+  const amount=parseFloat(document.getElementById('fTopupAmount').value);
+  if(!amount||amount<=0){toast(t('reseller.err_amount'));return}
+  try{
+    await fetch(`/api/resellers/${topupId}/topup`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount})});
+    closeTopupModal();loadResellers();toast(t('reseller.topup_done'));
+  }catch(e){toast(t('reseller.err_topup'))}
+}
+
+function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.className='toast show';setTimeout(()=>el.className='toast',3000)}
+
+loadResellers();
+</script>
+{% endblock %}

@@ -30,6 +30,13 @@ from src.api.auth import router as auth_router, auth_middleware, ensure_default_
 web_app.include_router(auth_router)
 web_app.middleware("http")(auth_middleware)
 
+# Make reseller routes accessible without admin auth
+import src.api.auth as _auth_mod
+_auth_mod.PUBLIC_PATHS.add("/r/panel")
+# Monkeypatch prefix check to include /api/r/ and /r/
+_orig_prefixes = _auth_mod.PUBLIC_PREFIXES
+_auth_mod.PUBLIC_PREFIXES = _orig_prefixes + ("/api/r/", "/r/")
+
 # ---------------------------------------------------------------------------
 # DB imports (lazy to avoid circular imports at module level)
 # ---------------------------------------------------------------------------
@@ -40,7 +47,7 @@ from src.core.marzban_client import marzban_client
 from src.core.device_tracker import device_tracker
 from src.core.geoip import get_geo
 from sqlalchemy import select, func, desc, distinct, delete
-from src.models.database import UserIP, PromoCode, TariffPlan
+from src.models.database import UserIP, PromoCode, TariffPlan, Reseller, ResellerTransaction, ResellerUser
 
 # ---------------------------------------------------------------------------
 # WebSocket manager
@@ -1356,6 +1363,406 @@ async def api_tariffs_reorder(request: Request):
                 t.sort_order = idx
         await session.commit()
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Page routes — Resellers
+# ---------------------------------------------------------------------------
+
+@web_app.get("/resellers", response_class=HTMLResponse)
+async def page_resellers(request: Request):
+    return templates.TemplateResponse(request, "resellers.html")
+
+
+@web_app.get("/r/panel", response_class=HTMLResponse)
+async def page_reseller_panel(request: Request):
+    return templates.TemplateResponse(request, "reseller_panel.html")
+
+
+# ---------------------------------------------------------------------------
+# API routes — Resellers (Admin)
+# ---------------------------------------------------------------------------
+
+@web_app.get("/api/resellers")
+async def api_resellers_list():
+    async with async_session() as session:
+        rows = (await session.execute(
+            select(Reseller).order_by(desc(Reseller.created_at))
+        )).scalars().all()
+        return [{
+            "id": r.id,
+            "username": r.username,
+            "display_name": r.display_name,
+            "api_key": r.api_key,
+            "balance_rub": r.balance_rub,
+            "commission_percent": r.commission_percent,
+            "is_active": r.is_active,
+            "max_users": r.max_users,
+            "created_users_count": r.created_users_count,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "last_login": r.last_login.isoformat() if r.last_login else None,
+        } for r in rows]
+
+
+@web_app.post("/api/resellers")
+async def api_resellers_create(request: Request):
+    data = await request.json()
+    username = data.get("username", "").strip()
+    display_name = data.get("display_name", username).strip()
+    if not username:
+        raise HTTPException(400, "Username is required")
+
+    api_key = secrets.token_hex(16)  # 32-char hex
+    async with async_session() as session:
+        existing = (await session.execute(
+            select(Reseller).where(Reseller.username == username)
+        )).scalar_one_or_none()
+        if existing:
+            raise HTTPException(400, "Username already exists")
+
+        r = Reseller(
+            username=username,
+            display_name=display_name,
+            api_key=api_key,
+            balance_rub=float(data.get("balance_rub", 0)),
+            commission_percent=float(data.get("commission_percent", 10)),
+            is_active=True,
+            max_users=int(data["max_users"]) if data.get("max_users") else None,
+        )
+        session.add(r)
+        await session.commit()
+        await session.refresh(r)
+        return {"id": r.id, "api_key": r.api_key, "ok": True}
+
+
+@web_app.put("/api/resellers/{reseller_id}")
+async def api_resellers_update(reseller_id: int, request: Request):
+    data = await request.json()
+    async with async_session() as session:
+        r = (await session.execute(
+            select(Reseller).where(Reseller.id == reseller_id)
+        )).scalar_one_or_none()
+        if not r:
+            raise HTTPException(404, "Reseller not found")
+        for field in ["display_name", "commission_percent", "max_users"]:
+            if field in data:
+                setattr(r, field, data[field])
+        if "username" in data:
+            r.username = data["username"]
+        await session.commit()
+        return {"ok": True}
+
+
+@web_app.delete("/api/resellers/{reseller_id}")
+async def api_resellers_delete(reseller_id: int):
+    async with async_session() as session:
+        r = (await session.execute(
+            select(Reseller).where(Reseller.id == reseller_id)
+        )).scalar_one_or_none()
+        if not r:
+            raise HTTPException(404, "Reseller not found")
+        await session.delete(r)
+        await session.commit()
+        return {"ok": True}
+
+
+@web_app.post("/api/resellers/{reseller_id}/toggle")
+async def api_resellers_toggle(reseller_id: int):
+    async with async_session() as session:
+        r = (await session.execute(
+            select(Reseller).where(Reseller.id == reseller_id)
+        )).scalar_one_or_none()
+        if not r:
+            raise HTTPException(404, "Reseller not found")
+        r.is_active = not r.is_active
+        await session.commit()
+        return {"ok": True, "is_active": r.is_active}
+
+
+@web_app.post("/api/resellers/{reseller_id}/topup")
+async def api_resellers_topup(reseller_id: int, request: Request):
+    data = await request.json()
+    amount = float(data.get("amount", 0))
+    if amount <= 0:
+        raise HTTPException(400, "Amount must be positive")
+    async with async_session() as session:
+        r = (await session.execute(
+            select(Reseller).where(Reseller.id == reseller_id)
+        )).scalar_one_or_none()
+        if not r:
+            raise HTTPException(404, "Reseller not found")
+        r.balance_rub += amount
+        tx = ResellerTransaction(
+            reseller_id=r.id,
+            type="topup",
+            amount=amount,
+            description=data.get("description", "Balance top-up"),
+        )
+        session.add(tx)
+        await session.commit()
+        return {"ok": True, "balance_rub": r.balance_rub}
+
+
+# ---------------------------------------------------------------------------
+# API routes — Reseller Panel (by API key)
+# ---------------------------------------------------------------------------
+
+RESELLER_JWT_EXPIRY = 72  # hours
+
+
+def _create_reseller_jwt(reseller_id: int, username: str) -> str:
+    from src.api.auth import JWT_SECRET, JWT_ALGORITHM
+    payload = {
+        "sub": username,
+        "role": "reseller",
+        "rid": reseller_id,
+        "exp": datetime.now() + timedelta(hours=RESELLER_JWT_EXPIRY),
+        "iat": datetime.now(),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+async def _get_reseller_from_token(request: Request) -> Reseller:
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(401, "Missing token")
+    from src.api.auth import JWT_SECRET, JWT_ALGORITHM
+    try:
+        payload = jwt.decode(auth[7:], JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except Exception:
+        raise HTTPException(401, "Invalid token")
+    if payload.get("role") != "reseller":
+        raise HTTPException(403, "Not a reseller token")
+    rid = payload.get("rid")
+    async with async_session() as session:
+        r = (await session.execute(
+            select(Reseller).where(Reseller.id == rid)
+        )).scalar_one_or_none()
+        if not r or not r.is_active:
+            raise HTTPException(403, "Reseller inactive")
+        return r
+
+
+@web_app.post("/api/r/auth")
+async def api_reseller_auth(request: Request):
+    data = await request.json()
+    api_key = data.get("api_key", "").strip()
+    if not api_key:
+        raise HTTPException(400, "API key required")
+    async with async_session() as session:
+        r = (await session.execute(
+            select(Reseller).where(Reseller.api_key == api_key)
+        )).scalar_one_or_none()
+        if not r:
+            raise HTTPException(401, "Invalid API key")
+        if not r.is_active:
+            raise HTTPException(403, "Reseller account is disabled")
+        r.last_login = datetime.now()
+        await session.commit()
+        token = _create_reseller_jwt(r.id, r.username)
+        return {
+            "token": token,
+            "reseller": {
+                "id": r.id,
+                "username": r.username,
+                "display_name": r.display_name,
+                "balance_rub": r.balance_rub,
+                "commission_percent": r.commission_percent,
+                "max_users": r.max_users,
+                "created_users_count": r.created_users_count,
+            }
+        }
+
+
+@web_app.get("/api/r/me")
+async def api_reseller_me(request: Request):
+    r = await _get_reseller_from_token(request)
+    return {
+        "id": r.id,
+        "username": r.username,
+        "display_name": r.display_name,
+        "balance_rub": r.balance_rub,
+        "commission_percent": r.commission_percent,
+        "max_users": r.max_users,
+        "created_users_count": r.created_users_count,
+    }
+
+
+@web_app.get("/api/r/users")
+async def api_reseller_users(request: Request):
+    r = await _get_reseller_from_token(request)
+    async with async_session() as session:
+        ru_rows = (await session.execute(
+            select(ResellerUser).where(ResellerUser.reseller_id == r.id).order_by(desc(ResellerUser.created_at))
+        )).scalars().all()
+        result = []
+        for ru in ru_rows:
+            # Get user status from main DB
+            user = (await session.execute(
+                select(DBUser).where(DBUser.username == ru.username)
+            )).scalar_one_or_none()
+            result.append({
+                "username": ru.username,
+                "status": user.status if user else "unknown",
+                "expire": user.expire.isoformat() if user and user.expire else None,
+                "created_at": ru.created_at.isoformat() if ru.created_at else None,
+            })
+        return result
+
+
+@web_app.post("/api/r/users/create")
+async def api_reseller_create_user(request: Request):
+    r = await _get_reseller_from_token(request)
+    data = await request.json()
+    username = data.get("username", "").strip()
+    tariff_id = data.get("tariff_id")
+    if not username:
+        raise HTTPException(400, "Username is required")
+    if not tariff_id:
+        raise HTTPException(400, "Tariff is required")
+
+    async with async_session() as session:
+        # Check limits
+        if r.max_users and r.created_users_count >= r.max_users:
+            raise HTTPException(400, "User limit reached")
+
+        tariff = (await session.execute(
+            select(TariffPlan).where(TariffPlan.id == tariff_id, TariffPlan.is_active == True)
+        )).scalar_one_or_none()
+        if not tariff:
+            raise HTTPException(404, "Tariff not found")
+
+        cost = tariff.price_rub * (1 - r.commission_percent / 100)
+        if r.balance_rub < cost:
+            raise HTTPException(400, f"Insufficient balance. Need {cost:.2f}₽, have {r.balance_rub:.2f}₽")
+
+        # Create user in Marzban
+        expire_ts = int((datetime.utcnow() + timedelta(days=tariff.duration_days)).timestamp())
+        data_limit_bytes = int(tariff.gb_limit * 1024**3) if tariff.gb_limit else None
+        try:
+            await marzban_client.create_user(
+                username=username,
+                data_limit_bytes=data_limit_bytes,
+                expire_date=expire_ts,
+                ip_limit=tariff.device_limit,
+            )
+        except Exception as e:
+            raise HTTPException(500, f"Failed to create user: {e}")
+
+        # Deduct balance
+        r.balance_rub -= cost
+        r.created_users_count += 1
+
+        # Record
+        ru = ResellerUser(reseller_id=r.id, username=username, tariff_id=tariff_id)
+        session.add(ru)
+        tx = ResellerTransaction(
+            reseller_id=r.id,
+            type="create_user",
+            amount=-cost,
+            username=username,
+            description=f"Created user ({tariff.name})",
+        )
+        session.add(tx)
+        await session.commit()
+
+        return {"ok": True, "cost": cost, "balance_rub": r.balance_rub}
+
+
+@web_app.post("/api/r/users/{username}/renew")
+async def api_reseller_renew_user(username: str, request: Request):
+    r = await _get_reseller_from_token(request)
+    data = await request.json()
+    tariff_id = data.get("tariff_id")
+    if not tariff_id:
+        raise HTTPException(400, "Tariff is required")
+
+    async with async_session() as session:
+        # Verify this user belongs to this reseller
+        ru = (await session.execute(
+            select(ResellerUser).where(
+                ResellerUser.reseller_id == r.id,
+                ResellerUser.username == username
+            )
+        )).scalar_one_or_none()
+        if not ru:
+            raise HTTPException(404, "User not found or not owned by you")
+
+        tariff = (await session.execute(
+            select(TariffPlan).where(TariffPlan.id == tariff_id, TariffPlan.is_active == True)
+        )).scalar_one_or_none()
+        if not tariff:
+            raise HTTPException(404, "Tariff not found")
+
+        cost = tariff.price_rub * (1 - r.commission_percent / 100)
+        if r.balance_rub < cost:
+            raise HTTPException(400, f"Insufficient balance. Need {cost:.2f}₽, have {r.balance_rub:.2f}₽")
+
+        # Renew in Marzban
+        user = (await session.execute(
+            select(DBUser).where(DBUser.username == username)
+        )).scalar_one_or_none()
+        current_expire = user.expire if user and user.expire else datetime.utcnow()
+        if current_expire < datetime.utcnow():
+            current_expire = datetime.utcnow()
+        new_expire = int((current_expire + timedelta(days=tariff.duration_days)).timestamp())
+        try:
+            await marzban_client.update_user(username, expire=new_expire)
+        except Exception as e:
+            raise HTTPException(500, f"Failed to renew user: {e}")
+
+        r.balance_rub -= cost
+        tx = ResellerTransaction(
+            reseller_id=r.id,
+            type="renew_user",
+            amount=-cost,
+            username=username,
+            description=f"Renewed user ({tariff.name})",
+        )
+        session.add(tx)
+        await session.commit()
+
+        return {"ok": True, "cost": cost, "balance_rub": r.balance_rub}
+
+
+@web_app.get("/api/r/transactions")
+async def api_reseller_transactions(request: Request):
+    r = await _get_reseller_from_token(request)
+    async with async_session() as session:
+        rows = (await session.execute(
+            select(ResellerTransaction)
+            .where(ResellerTransaction.reseller_id == r.id)
+            .order_by(desc(ResellerTransaction.created_at))
+            .limit(100)
+        )).scalars().all()
+        return [{
+            "id": tx.id,
+            "type": tx.type,
+            "amount": tx.amount,
+            "username": tx.username,
+            "description": tx.description,
+            "created_at": tx.created_at.isoformat() if tx.created_at else None,
+        } for tx in rows]
+
+
+# Reseller panel also needs tariff list (public, no auth)
+@web_app.get("/api/r/tariffs")
+async def api_reseller_tariffs():
+    async with async_session() as session:
+        rows = (await session.execute(
+            select(TariffPlan).where(TariffPlan.is_active == True).order_by(TariffPlan.sort_order, TariffPlan.id)
+        )).scalars().all()
+        return [{
+            "id": t.id,
+            "name": t.name,
+            "name_en": t.name_en,
+            "duration_days": t.duration_days,
+            "price_rub": t.price_rub,
+            "gb_limit": t.gb_limit,
+            "device_limit": t.device_limit,
+            "description": t.description,
+            "description_en": t.description_en,
+        } for t in rows]
 
 
 async def push_dashboard_updates():

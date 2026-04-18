@@ -163,6 +163,47 @@ class TariffPlan(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class Reseller(Base):
+    """Реселлеры."""
+    __tablename__ = "resellers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    display_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    api_key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    balance_rub: Mapped[float] = mapped_column(Float, default=0.0)
+    commission_percent: Mapped[float] = mapped_column(Float, default=10.0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    max_users: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_users_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_login: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ResellerTransaction(Base):
+    """Транзакции реселлеров."""
+    __tablename__ = "reseller_transactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    reseller_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    type: Mapped[str] = mapped_column(String(32), nullable=False)  # topup, create_user, renew_user
+    amount: Mapped[float] = mapped_column(Float, nullable=False)
+    username: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)  # target user
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ResellerUser(Base):
+    """Пользователи, созданные реселлерами."""
+    __tablename__ = "reseller_users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    reseller_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    username: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    tariff_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Alert(Base):
     """Уведомления и предупреждения."""
     __tablename__ = "alerts"
