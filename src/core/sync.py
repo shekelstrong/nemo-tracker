@@ -17,16 +17,18 @@ _ONLINE_THRESHOLD_SEC = 120
 
 
 def _parse_dt(value: Any) -> datetime | None:
-    """Парсит дату из Marzban ответа."""
+    """Парсит дату из Marzban ответа (unix timestamp, ISO строка, datetime)."""
     if not value:
         return None
     if isinstance(value, datetime):
         if value.tzinfo is None:
             return value.replace(tzinfo=timezone.utc)
         return value
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(value, tz=timezone.utc)
     try:
         from dateutil.parser import parse as dt_parse
-        return dt_parse(value)
+        return dt_parse(str(value))
     except Exception:
         return None
 
@@ -77,12 +79,19 @@ async def sync_all_users() -> Tuple[int, int, List[str]]:
             if data_limit and data_limit > 0:
                 gb_limit = round(data_limit / (1024**3), 2)
 
+            # Определяем tier по inbounds
+            inbounds = udata.get("inbounds") or {}
+            all_tags = [tag for tags in inbounds.values() for tag in tags]
+            tier = 1 if "vless-reality-whitelist" in all_tags else 0
+
+            # Лимит устройств из Marzban
+            ip_limit = udata.get("ip_limit") or 0
+
             # Проверяем есть ли юзер в кэше
             result = await session.execute(select(User).where(User.username == username))
             db_user = result.scalar_one_or_none()
 
             if db_user is None:
-                # Новый пользователь
                 db_user = User(
                     username=username,
                     status=status,
@@ -91,19 +100,22 @@ async def sync_all_users() -> Tuple[int, int, List[str]]:
                     online_at=online_at,
                     expire=expire,
                     gb_limit=gb_limit,
+                    tier=tier,
+                    device_count=ip_limit,
                     was_online=_is_online(online_at),
                     last_synced=datetime.now(timezone.utc),
                 )
                 session.add(db_user)
                 new_usernames.append(username)
             else:
-                # Обновляем существующего
                 db_user.status = status
                 db_user.used_traffic = used_traffic
                 db_user.data_limit = data_limit
                 db_user.online_at = online_at
                 db_user.expire = expire
                 db_user.gb_limit = gb_limit
+                db_user.tier = tier
+                db_user.device_count = ip_limit
                 db_user.last_synced = datetime.now(timezone.utc)
 
         await session.commit()
