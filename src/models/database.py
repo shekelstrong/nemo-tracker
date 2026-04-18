@@ -125,6 +125,23 @@ class AdminUser(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class PromoCode(Base):
+    """Промокоды для скидок."""
+    __tablename__ = "promo_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(16), unique=True, nullable=False, index=True)
+    discount_percent: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    discount_amount: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    duration_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    max_uses: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    current_uses: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
 class Alert(Base):
     """Уведомления и предупреждения."""
     __tablename__ = "alerts"

@@ -40,7 +40,7 @@ from src.core.marzban_client import marzban_client
 from src.core.device_tracker import device_tracker
 from src.core.geoip import get_geo
 from sqlalchemy import select, func, desc, distinct, delete
-from src.models.database import UserIP
+from src.models.database import UserIP, PromoCode
 
 # ---------------------------------------------------------------------------
 # WebSocket manager
@@ -169,6 +169,11 @@ async def page_geo(request: Request):
 # ---------------------------------------------------------------------------
 # API routes — REAL DATA
 # ---------------------------------------------------------------------------
+
+@web_app.get("/promocodes", response_class=HTMLResponse)
+async def page_promocodes(request: Request):
+    return templates.TemplateResponse(request, "promocodes.html")
+
 
 @web_app.get("/api/dashboard")
 async def api_dashboard():
@@ -1122,6 +1127,115 @@ async def ws_endpoint(ws: WebSocket):
             await ws.receive_text()
     except WebSocketDisconnect:
         ws_manager.disconnect(ws)
+
+
+import secrets
+import string as _string_mod
+
+
+def _gen_promo_code(length=8) -> str:
+    chars = _string_mod.ascii_uppercase + _string_mod.digits
+    return ''.join(secrets.choice(chars) for _ in range(length))
+
+
+@web_app.get("/api/promocodes")
+async def api_promocodes_list():
+    async with async_session() as session:
+        rows = (await session.execute(
+            select(PromoCode).order_by(desc(PromoCode.created_at))
+        )).scalars().all()
+        return [{
+            "id": p.id,
+            "code": p.code,
+            "discount_percent": p.discount_percent,
+            "discount_amount": p.discount_amount,
+            "duration_days": p.duration_days,
+            "max_uses": p.max_uses,
+            "current_uses": p.current_uses,
+            "is_active": p.is_active,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+            "expires_at": p.expires_at.isoformat() if p.expires_at else None,
+            "description": p.description,
+        } for p in rows]
+
+
+@web_app.post("/api/promocodes")
+async def api_promocodes_create(request: Request):
+    data = await request.json()
+    code = data.get("code") or _gen_promo_code()
+    discount_type = data.get("discount_type", "percent")
+
+    async with async_session() as session:
+        existing = (await session.execute(
+            select(PromoCode).where(PromoCode.code == code)
+        )).scalar_one_or_none()
+        if existing:
+            raise HTTPException(400, "Code already exists")
+
+        p = PromoCode(code=code)
+        if discount_type == "percent":
+            p.discount_percent = float(data["discount_value"])
+        else:
+            p.discount_amount = float(data["discount_value"])
+        if data.get("duration_days"):
+            p.duration_days = int(data["duration_days"])
+        if data.get("max_uses"):
+            p.max_uses = int(data["max_uses"])
+        if data.get("expires_at"):
+            p.expires_at = datetime.fromisoformat(data["expires_at"])
+        if data.get("description"):
+            p.description = data["description"]
+        session.add(p)
+        await session.commit()
+        await session.refresh(p)
+        return {"id": p.id, "code": p.code}
+
+
+@web_app.put("/api/promocodes/{promo_id}")
+async def api_promocodes_update(promo_id: int, request: Request):
+    data = await request.json()
+    async with async_session() as session:
+        p = (await session.execute(
+            select(PromoCode).where(PromoCode.id == promo_id)
+        )).scalar_one_or_none()
+        if not p:
+            raise HTTPException(404, "Promo code not found")
+        for field in ["code", "discount_percent", "discount_amount", "duration_days",
+                      "max_uses", "description"]:
+            if field in data:
+                setattr(p, field, data[field])
+        if "expires_at" in data and data["expires_at"]:
+            p.expires_at = datetime.fromisoformat(data["expires_at"])
+        elif "expires_at" in data:
+            p.expires_at = None
+        await session.commit()
+        return {"ok": True}
+
+
+@web_app.delete("/api/promocodes/{promo_id}")
+async def api_promocodes_delete(promo_id: int):
+    async with async_session() as session:
+        p = (await session.execute(
+            select(PromoCode).where(PromoCode.id == promo_id)
+        )).scalar_one_or_none()
+        if not p:
+            raise HTTPException(404, "Promo code not found")
+        await session.delete(p)
+        await session.commit()
+        return {"ok": True}
+
+
+@web_app.post("/api/promocodes/{promo_id}/toggle")
+async def api_promocodes_toggle(promo_id: int):
+    async with async_session() as session:
+        p = (await session.execute(
+            select(PromoCode).where(PromoCode.id == promo_id)
+        )).scalar_one_or_none()
+        if not p:
+            raise HTTPException(404, "Promo code not found")
+        p.is_active = not p.is_active
+        await session.commit()
+        return {"ok": True, "is_active": p.is_active}
 
 
 async def push_dashboard_updates():

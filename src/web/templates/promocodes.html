@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+
+{% block title %}Promo Codes — Nemo Tracker{% endblock %}
+{% set page = 'promocodes' %}
+{% block topbar_title %}promo.title{% endblock %}
+
+{% block content %}
+<div class="page-container">
+  <!-- Stats -->
+  <div class="stats-row" id="promoStats">
+    <div class="stat-card">
+      <div class="stat-value" id="statTotal">0</div>
+      <div class="stat-label" data-i18n="promo.total">Total Codes</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="statActive">0</div>
+      <div class="stat-label" data-i18n="promo.active_count">Active</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="statUses">0</div>
+      <div class="stat-label" data-i18n="promo.total_uses">Total Uses</div>
+    </div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <button class="btn btn-primary" onclick="openCreateModal()">
+      <i class="fas fa-plus"></i> <span data-i18n="promo.create_btn">Create Promo Code</span>
+    </button>
+  </div>
+
+  <!-- Table -->
+  <div class="table-container">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th data-i18n="promo.code">Code</th>
+          <th data-i18n="promo.discount">Discount</th>
+          <th data-i18n="promo.duration_days">Duration</th>
+          <th data-i18n="promo.uses">Uses</th>
+          <th data-i18n="promo.expires_at">Expires</th>
+          <th data-i18n="promo.status">Status</th>
+          <th data-i18n="promo.actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="promoTable">
+        <tr><td colspan="7" class="text-center" data-i18n="promo.no_codes">No promo codes yet</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Create/Edit Modal -->
+<div class="modal-overlay" id="promoModal" style="display:none" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle" data-i18n="promo.create_title">Create Promo Code</h3>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editId" value="">
+      <div class="form-group">
+        <label data-i18n="promo.code">Code</label>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="promoCode" class="form-control" data-i18n-placeholder="promo.code_ph" placeholder="PROMO2024" style="text-transform:uppercase">
+          <button class="btn btn-secondary" onclick="autoGenerate()" data-i18n="promo.auto_gen">Auto-generate</button>
+        </div>
+      </div>
+      <div class="form-group" id="discountTypeGroup">
+        <label data-i18n="promo.discount_type">Discount Type</label>
+        <select id="discountType" class="form-control">
+          <option value="percent" data-i18n="promo.percent">Percent (%)</option>
+          <option value="fixed" data-i18n="promo.fixed">Fixed (₽)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label data-i18n="promo.discount_value">Discount Value</label>
+        <input type="number" id="discountValue" class="form-control" min="0" step="0.01">
+      </div>
+      <div class="form-group">
+        <label data-i18n="promo.duration_days">Duration (days)</label>
+        <input type="number" id="durationDays" class="form-control" min="1" placeholder="30">
+      </div>
+      <div class="form-group">
+        <label data-i18n="promo.max_uses">Max Uses</label>
+        <input type="number" id="maxUses" class="form-control" min="1" placeholder="∞">
+      </div>
+      <div class="form-group">
+        <label data-i18n="promo.expires_at">Expires At</label>
+        <input type="datetime-local" id="expiresAt" class="form-control">
+      </div>
+      <div class="form-group">
+        <label data-i18n="promo.description">Description</label>
+        <input type="text" id="promoDescription" class="form-control" data-i18n-placeholder="promo.description_ph" placeholder="Optional description">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()" data-i18n="promo.cancel">Cancel</button>
+      <button class="btn btn-primary" id="modalSaveBtn" onclick="savePromo()" data-i18n="promo.create">Create</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let promoData = [];
+
+function fmtDiscount(p) {
+  if (p.discount_percent) return p.discount_percent + '%';
+  if (p.discount_amount) return p.discount_amount + ' ₽';
+  return '—';
+}
+
+function fmtDuration(d) {
+  if (!d) return '<span style="color:var(--muted)">—</span>';
+  return d + ' <span data-i18n="promo.days">' + t('promo.days') + '</span>';
+}
+
+function fmtExpires(dt) {
+  if (!dt) return '<span style="color:var(--muted)">' + t('promo.no_expire') + '</span>';
+  return new Date(dt).toLocaleDateString();
+}
+
+function fmtUses(p) {
+  const cur = p.current_uses || 0;
+  const max = p.max_uses;
+  if (!max) return cur + ' / ∞';
+  return cur + ' / ' + max;
+}
+
+function fmtStatus(p) {
+  if (p.is_active) return '<span class="badge badge-success">' + t('promo.active') + '</span>';
+  return '<span class="badge badge-danger">' + t('promo.inactive') + '</span>';
+}
+
+function renderTable() {
+  const tbody = document.getElementById('promoTable');
+  if (!promoData.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center">' + t('promo.no_codes') + '</td></tr>';
+    return;
+  }
+  tbody.innerHTML = promoData.map(p => `
+    <tr>
+      <td><code style="font-size:1.05em;letter-spacing:1px">${p.code}</code></td>
+      <td>${fmtDiscount(p)}</td>
+      <td>${fmtDuration(p.duration_days)}</td>
+      <td>${fmtUses(p)}</td>
+      <td>${fmtExpires(p.expires_at)}</td>
+      <td>${fmtStatus(p)}</td>
+      <td class="actions-cell">
+        <button class="btn-icon" title="${t('promo.copy')}" onclick="copyCode('${p.code}')"><i class="fas fa-copy"></i></button>
+        <button class="btn-icon" title="${t('promo.toggle')}" onclick="togglePromo(${p.id})"><i class="fas fa-power-off"></i></button>
+        <button class="btn-icon" title="${t('promo.edit')}" onclick="openEditModal(${p.id})"><i class="fas fa-pen"></i></button>
+        <button class="btn-icon btn-danger" title="${t('promo.delete')}" onclick="deletePromo(${p.id})"><i class="fas fa-trash"></i></button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function updateStats() {
+  document.getElementById('statTotal').textContent = promoData.length;
+  document.getElementById('statActive').textContent = promoData.filter(p => p.is_active).length;
+  document.getElementById('statUses').textContent = promoData.reduce((s, p) => s + (p.current_uses || 0), 0);
+}
+
+async function loadPromos() {
+  try {
+    promoData = await fetch('/api/promocodes').then(r => r.json());
+    renderTable();
+    updateStats();
+  } catch (e) { console.error(e); }
+}
+
+function autoGenerate() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = '';
+  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  document.getElementById('promoCode').value = code;
+}
+
+function openCreateModal() {
+  document.getElementById('editId').value = '';
+  document.getElementById('modalTitle').textContent = t('promo.create_title');
+  document.getElementById('modalSaveBtn').textContent = t('promo.create');
+  document.getElementById('discountTypeGroup').style.display = '';
+  document.getElementById('promoCode').value = '';
+  document.getElementById('discountType').value = 'percent';
+  document.getElementById('discountValue').value = '';
+  document.getElementById('durationDays').value = '';
+  document.getElementById('maxUses').value = '';
+  document.getElementById('expiresAt').value = '';
+  document.getElementById('promoDescription').value = '';
+  document.getElementById('promoModal').style.display = 'flex';
+}
+
+function openEditModal(id) {
+  const p = promoData.find(x => x.id === id);
+  if (!p) return;
+  document.getElementById('editId').value = id;
+  document.getElementById('modalTitle').textContent = t('promo.edit_title');
+  document.getElementById('modalSaveBtn').textContent = t('promo.save');
+  document.getElementById('discountTypeGroup').style.display = 'none';
+  document.getElementById('promoCode').value = p.code;
+  document.getElementById('discountValue').value = p.discount_percent || p.discount_amount || '';
+  document.getElementById('durationDays').value = p.duration_days || '';
+  document.getElementById('maxUses').value = p.max_uses || '';
+  document.getElementById('expiresAt').value = p.expires_at ? p.expires_at.slice(0, 16) : '';
+  document.getElementById('promoDescription').value = p.description || '';
+  document.getElementById('promoModal').style.display = 'flex';
+}
+
+function closeModal() {
+  document.getElementById('promoModal').style.display = 'none';
+}
+
+async function savePromo() {
+  const editId = document.getElementById('editId').value;
+  const payload = {
+    code: document.getElementById('promoCode').value.trim().toUpperCase(),
+    discount_type: document.getElementById('discountType').value,
+    discount_value: parseFloat(document.getElementById('discountValue').value) || 0,
+    duration_days: document.getElementById('durationDays').value || null,
+    max_uses: document.getElementById('maxUses').value || null,
+    expires_at: document.getElementById('expiresAt').value || null,
+    description: document.getElementById('promoDescription').value.trim() || null,
+  };
+
+  try {
+    if (editId) {
+      await fetch('/api/promocodes/' + editId, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      toast(t('promo.updated'), 'success');
+    } else {
+      await fetch('/api/promocodes', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      toast(t('promo.created'), 'success');
+    }
+    closeModal();
+    await loadPromos();
+  } catch (e) {
+    toast(t(editId ? 'promo.err_update' : 'promo.err_create'), 'error');
+  }
+}
+
+async function togglePromo(id) {
+  try {
+    await fetch('/api/promocodes/' + id + '/toggle', { method: 'POST' });
+    toast(t('promo.toggled'), 'success');
+    await loadPromos();
+  } catch (e) { toast(t('promo.err_toggle'), 'error'); }
+}
+
+async function deletePromo(id) {
+  if (!confirm(t('promo.confirm_delete'))) return;
+  try {
+    await fetch('/api/promocodes/' + id, { method: 'DELETE' });
+    toast(t('promo.deleted'), 'success');
+    await loadPromos();
+  } catch (e) { toast(t('promo.err_delete'), 'error'); }
+}
+
+function copyCode(code) {
+  navigator.clipboard.writeText(code).then(() => toast(t('promo.copied'), 'success'));
+}
+
+function toast(msg, type) {
+  let el = document.getElementById('toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast';
+    el.style.cssText = 'position:fixed;bottom:24px;right:24px;padding:12px 24px;border-radius:8px;color:#fff;z-index:9999;transition:opacity 0.3s;font-size:14px';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.background = type === 'success' ? 'var(--success,#22c55e)' : 'var(--danger,#ef4444)';
+  el.style.opacity = 1;
+  setTimeout(() => el.style.opacity = 0, 2500);
+}
+
+loadPromos();
+</script>
+{% endblock %}
