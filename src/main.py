@@ -91,7 +91,7 @@ async def _run_alerts():
 async def _run_web():
     """Запуск FastAPI web-сервера."""
     import uvicorn
-    from src.api.web import app
+    from src.api.web import web_app as app
     from src.config import settings
     config = uvicorn.Config(app, host=settings.web_host, port=settings.web_port, log_level="info")
     server = uvicorn.Server(config)

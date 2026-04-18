@@ -67,6 +67,49 @@ class MarzbanClient:
         """Re-enable a user."""
         return await self._request("PUT", f"/user/{username}", json={"status": "active"})
 
+    async def create_user(
+        self,
+        username: str,
+        data_limit_bytes: Optional[int] = None,
+        expire_date: Optional[str] = None,
+        ip_limit: Optional[int] = None,
+        note: Optional[str] = None,
+    ) -> Dict:
+        """Create a new user in Marzban."""
+        payload: Dict[str, Any] = {
+            "username": username,
+            "proxies": {"vless": {}},
+            "inbounds": {"vless": ["VLESS TCP REALITY"]},
+        }
+        if data_limit_bytes is not None:
+            payload["data_limit"] = data_limit_bytes
+        if expire_date is not None:
+            payload["expire"] = expire_date
+        if ip_limit is not None:
+            payload["max_ip"] = ip_limit
+        if note is not None:
+            payload["note"] = note
+        return await self._request("POST", "/user", json=payload)
+
+    async def update_user(self, username: str, **kwargs) -> Dict:
+        """Update arbitrary fields on a user."""
+        return await self._request("PUT", f"/user/{username}", json=kwargs)
+
+    async def delete_user(self, username: str) -> Dict:
+        """Delete a user."""
+        return await self._request("DELETE", f"/user/{username}")
+
+    async def reset_user_traffic(self, username: str) -> Dict:
+        """Reset user's used traffic to 0."""
+        return await self._request("POST", f"/user/{username}/reset")
+
+    async def get_user_subscription_url(self, username: str) -> Optional[str]:
+        """Get user's subscription URL."""
+        user = await self.get_user(username)
+        if user:
+            return user.get("subscription_url")
+        return None
+
     async def get_user_usage(self, username: str) -> Dict:
         """Get user usage stats."""
         return await self._request("GET", f"/user/{username}/usage")

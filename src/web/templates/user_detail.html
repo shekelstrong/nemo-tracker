@@ -7,11 +7,32 @@
 
 <div id="detailLoading"><div class="spinner"></div></div>
 <div id="detailContent" style="display:none">
+
   <!-- Header -->
   <div class="user-header" id="userHeader"></div>
 
+  <!-- Action buttons -->
+  <div class="detail-actions" id="detailActions"></div>
+
   <!-- Info cards -->
   <div class="detail-info-grid" id="infoGrid"></div>
+
+  <!-- Subscription management -->
+  <div class="glass-card" style="margin-bottom:20px">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:16px" data-i18n="ud.subscription">Subscription</h3>
+    <div id="subBlock"></div>
+  </div>
+
+  <!-- Renew / limit management -->
+  <div class="glass-card" style="margin-bottom:20px">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:16px" data-i18n="ud.manage_sub">Manage Subscription</h3>
+    <div style="display:flex;gap:8px;flex-wrap:wrap" id="renewBtns">
+      <button class="btn btn-secondary btn-sm" onclick="renewUser(1)">+ 1 <span data-i18n="ud.month">month</span></button>
+      <button class="btn btn-secondary btn-sm" onclick="renewUser(3)">+ 3 <span data-i18n="ud.months">months</span></button>
+      <button class="btn btn-secondary btn-sm" onclick="renewUser(6)">+ 6 <span data-i18n="ud.months">months</span></button>
+      <button class="btn btn-secondary btn-sm" onclick="renewUser(12)">+ 12 <span data-i18n="ud.months">months</span></button>
+    </div>
+  </div>
 
   <!-- Charts & tables -->
   <div class="detail-grid">
@@ -49,21 +70,114 @@
     </div>
   </div>
 </div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal glassmorphism-modal">
+    <button class="modal-close" onclick="closeEditModal()">&times;</button>
+    <h3 data-i18n="users.edit_title">Edit User</h3>
+    <div class="form-group">
+      <label data-i18n="users.data_limit_gb">Data Limit (GB)</label>
+      <input class="form-input" id="editDataLimit" type="number" min="0">
+    </div>
+    <div class="form-group">
+      <label data-i18n="users.expire_date">Expire Date</label>
+      <input class="form-input" id="editExpire" type="date">
+    </div>
+    <div class="form-group">
+      <label data-i18n="users.device_limit">Device Limit</label>
+      <input class="form-input" id="editDeviceLimit" type="number" min="0">
+    </div>
+    <div class="form-group">
+      <label data-i18n="users.note">Note</label>
+      <input class="form-input" id="editNote">
+    </div>
+    <div class="save-bar">
+      <button class="btn btn-secondary" onclick="closeEditModal()" data-i18n="users.cancel">Cancel</button>
+      <button class="btn btn-primary" onclick="saveUser()" data-i18n="users.save">Save</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+const DETAIL_USER = '{{ username }}';
 const COUNTRY_FLAGS = { US:'🇺🇸', RU:'🇷🇺', DE:'🇩🇪', NL:'🇳🇱', GB:'🇬🇧', FR:'🇫🇷', JP:'🇯🇵', CN:'🇨🇳', KR:'🇰🇷', UA:'🇺🇦', TR:'🇹🇷', IN:'🇮🇳', BR:'🇧🇷', CA:'🇨🇦', AU:'🇦🇺', SG:'🇸🇬', HK:'🇭🇰', PL:'🇵🇱', FI:'🇫🇮', SE:'🇸🇪' };
+function flag(c) { return COUNTRY_FLAGS[c] || '🏳️'; }
+function badgeClass(s) { return 'badge badge-' + ({active:'active',expired:'expired',disabled:'disabled',limited:'limited'}[s]||'expired'); }
 
-function flag(country) { return COUNTRY_FLAGS[country] || '🏳️'; }
+let currentUser = null;
 
-function badgeClass(status) {
-  return 'badge badge-' + ({ active:'active', expired:'expired', disabled:'disabled', limited:'limited' }[status] || 'expired');
+function openEditModal() {
+  if (!currentUser) return;
+  document.getElementById('editDataLimit').value = currentUser.traffic_limit_gb || '';
+  if (currentUser.expire) document.getElementById('editExpire').value = currentUser.expire.slice(0,10);
+  else document.getElementById('editExpire').value = '';
+  document.getElementById('editDeviceLimit').value = currentUser.device_limit || '';
+  document.getElementById('editNote').value = '';
+  document.getElementById('editModal').classList.add('open');
+}
+function closeEditModal() { document.getElementById('editModal').classList.remove('open'); }
+
+async function saveUser() {
+  const data_limit_gb = parseFloat(document.getElementById('editDataLimit').value) || 0;
+  const expireStr = document.getElementById('editExpire').value;
+  const ip_limit = parseInt(document.getElementById('editDeviceLimit').value) || 0;
+  const note = document.getElementById('editNote').value.trim();
+  const payload = { data_limit_gb: data_limit_gb || null, ip_limit: ip_limit || null, note };
+  if (expireStr) payload.expire = Math.floor(new Date(expireStr).getTime() / 1000);
+  else payload.expire = 0;
+  try {
+    await fetchApi(`/api/users/${DETAIL_USER}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    showToast(t('users.updated')||'User updated');
+    closeEditModal();
+    onPageLoad();
+  } catch(e) { showToast((t('users.err_update')||'Error')+': '+e.message); }
+}
+
+async function toggleDetailUser() {
+  if (!currentUser) return;
+  const next = currentUser.status === 'active' ? 'disabled' : 'active';
+  try {
+    await fetchApi(`/api/users/${DETAIL_USER}/toggle`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:next})});
+    showToast(t('users.toggled')||'Status changed');
+    onPageLoad();
+  } catch(e) { showToast(e.message); }
+}
+
+async function resetDetailTraffic() {
+  if (!confirm(t('users.confirm_reset')||'Reset traffic?')) return;
+  try {
+    await fetchApi(`/api/users/${DETAIL_USER}/reset-traffic`, {method:'POST'});
+    showToast(t('users.traffic_reset')||'Traffic reset');
+    onPageLoad();
+  } catch(e) { showToast(e.message); }
+}
+
+async function copySubUrl() {
+  try {
+    const data = await fetchApi(`/api/users/${DETAIL_USER}/subscription`);
+    if (data.url) { await navigator.clipboard.writeText(data.url); showToast(t('users.copied')||'Copied'); }
+  } catch(e) { showToast(e.message); }
+}
+
+async function renewUser(months) {
+  if (!currentUser) return;
+  const now = currentUser.expire ? new Date(currentUser.expire) : new Date();
+  const base = currentUser.expire && now > new Date() ? now : new Date();
+  const newExpire = new Date(base.getTime() + months * 30 * 86400000);
+  try {
+    await fetchApi(`/api/users/${DETAIL_USER}`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({expire:Math.floor(newExpire.getTime()/1000)})});
+    showToast(t('users.updated')||'Updated');
+    onPageLoad();
+  } catch(e) { showToast(e.message); }
 }
 
 async function onPageLoad() {
   try {
-    const u = await fetchApi('/api/users/{{ username }}');
+    const u = await fetchApi(`/api/users/${DETAIL_USER}`);
+    currentUser = u;
     document.getElementById('detailLoading').style.display = 'none';
     document.getElementById('detailContent').style.display = 'block';
 
@@ -80,12 +194,53 @@ async function onPageLoad() {
       </div>
     `;
 
-    // Info grid
-    document.getElementById('infoGrid').innerHTML = `
-      <div class="detail-stat"><div class="label" data-i18n="ud.created">${t('ud.created')}</div><div class="val">${u.created}</div></div>
-      <div class="detail-stat"><div class="label" data-i18n="ud.expire">${t('ud.expire')}</div><div class="val">${u.expire || t('ud.no_expire')}</div></div>
-      <div class="detail-stat"><div class="label" data-i18n="ud.device_count">${t('ud.device_count')}</div><div class="val">${u.devices} / ${u.device_limit || '∞'}</div></div>
+    // Actions
+    document.getElementById('detailActions').innerHTML = `
+      <button class="btn btn-secondary btn-sm" onclick="toggleDetailUser()">⏸️ ${t('users.toggle')||'Toggle'}</button>
+      <button class="btn btn-secondary btn-sm" onclick="resetDetailTraffic()">🔄 ${t('users.reset')||'Reset'}</button>
+      <button class="btn btn-secondary btn-sm" onclick="openEditModal()">✏️ ${t('users.edit')||'Edit'}</button>
+      <button class="btn btn-secondary btn-sm" onclick="copySubUrl()">📋 ${t('users.sub_url')||'Copy URL'}</button>
     `;
+
+    // Traffic info
+    const usedGb = u.traffic_used_gb || 0;
+    const limitGb = u.traffic_limit_gb;
+    const pct = limitGb ? Math.round((usedGb / limitGb) * 100) : 0;
+    const trafficHtml = limitGb
+      ? `<div class="progress-bar" style="width:100%;height:8px"><div class="fill ${pct>90?'red':pct>70?'orange':'green'}" style="width:${Math.min(pct,100)}%"></div></div>
+         <div style="margin-top:6px;font-size:13px;color:var(--text-2)">${usedGb} / ${limitGb} GB (${pct}%)</div>`
+      : `<div style="font-size:13px;color:var(--text-2)">${usedGb} GB / ∞</div>`;
+
+    document.getElementById('infoGrid').innerHTML = `
+      <div class="detail-stat"><div class="label">${t('ud.created')||'Created'}</div><div class="val">${u.created}</div></div>
+      <div class="detail-stat"><div class="label">${t('ud.expire')||'Expires'}</div><div class="val">${u.expire ? u.expire.slice(0,10) : (t('ud.no_expire')||'Never')}</div></div>
+      <div class="detail-stat"><div class="label">${t('users.data_limit_gb')||'Data Limit'}</div><div class="val">${trafficHtml}</div></div>
+      <div class="detail-stat"><div class="label">${t('ud.device_limit')||'Device Limit'}</div><div class="val">${u.device_limit || '∞'}</div></div>
+      <div class="detail-stat"><div class="label">${t('ud.device_count')||'Unique IPs'}</div><div class="val">${u.devices}</div></div>
+    `;
+
+    // Subscription
+    document.getElementById('subBlock').innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <code id="subUrl" style="flex:1;padding:8px 12px;background:var(--input-bg);border-radius:6px;font-size:12px;word-break:break-all;min-width:200px">Loading...</code>
+        <button class="btn btn-sm btn-secondary" onclick="copySubUrl()">📋 ${t('users.copy')||'Copy'}</button>
+      </div>
+      <div style="margin-top:16px;text-align:center">
+        <img id="subQR" src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" alt="QR" style="border-radius:8px;background:#fff;padding:8px">
+      </div>
+    `;
+    try {
+      const subData = await fetchApi(`/api/users/${DETAIL_USER}/subscription`);
+      const urlEl = document.getElementById('subUrl');
+      const qrEl = document.getElementById('subQR');
+      if (subData.url) {
+        urlEl.textContent = subData.url;
+        qrEl.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(subData.url)}`;
+      } else {
+        urlEl.textContent = '—';
+        qrEl.style.display = 'none';
+      }
+    } catch { document.getElementById('subUrl').textContent = '—'; }
 
     // Traffic chart
     const ctx = document.getElementById('chartTraffic7d').getContext('2d');

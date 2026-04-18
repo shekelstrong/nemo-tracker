@@ -12,6 +12,9 @@
     <button class="filter-btn" data-status="disabled" onclick="setStatusFilter('disabled',this)" data-i18n="users.disabled">Disabled</button>
     <button class="filter-btn" data-status="limited" onclick="setStatusFilter('limited',this)" data-i18n="users.limited">Limited</button>
   </div>
+  <button class="btn btn-primary btn-add-user" onclick="openCreateModal()">
+    <i class="fas fa-plus"></i> <span data-i18n="users.new_user">New User</span>
+  </button>
 </div>
 
 <div class="glass-card" style="padding:0;overflow:hidden">
@@ -25,6 +28,7 @@
           <th data-i18n="users.devices">Devices</th>
           <th onclick="sortBy('last_online')"><span data-i18n="users.last_online">Last Online</span> <i class="fas fa-sort sort-icon"></i></th>
           <th data-i18n="users.tier">Tier</th>
+          <th data-i18n="users.actions">Actions</th>
         </tr>
       </thead>
       <tbody id="usersBody"></tbody>
@@ -33,6 +37,72 @@
 </div>
 
 <div id="usersLoading"><div class="spinner"></div></div>
+
+<!-- Create User Modal -->
+<div class="modal-overlay" id="createModal">
+  <div class="modal glassmorphism-modal">
+    <button class="modal-close" onclick="closeCreateModal()">&times;</button>
+    <h3 data-i18n="users.create_title">New User</h3>
+    <div class="form-group">
+      <label data-i18n="users.username">Username</label>
+      <input class="form-input" id="createUsername" placeholder="username" data-i18n-placeholder="users.username_ph">
+    </div>
+    <div class="form-group">
+      <label data-i18n="users.data_limit_gb">Data Limit (GB)</label>
+      <input class="form-input" id="createDataLimit" type="number" min="0" placeholder="0 = unlimited">
+    </div>
+    <div class="form-group">
+      <label data-i18n="users.duration">Duration</label>
+      <select class="form-input" id="createDuration">
+        <option value="1">1 month</option>
+        <option value="3">3 months</option>
+        <option value="6">6 months</option>
+        <option value="12">12 months</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label data-i18n="users.device_limit">Device Limit</label>
+      <input class="form-input" id="createDeviceLimit" type="number" min="0" placeholder="0 = unlimited">
+    </div>
+    <div class="form-group">
+      <label data-i18n="users.note">Note</label>
+      <input class="form-input" id="createNote" placeholder="Optional note" data-i18n-placeholder="users.note_ph">
+    </div>
+    <div class="save-bar">
+      <button class="btn btn-secondary" onclick="closeCreateModal()" data-i18n="users.cancel">Cancel</button>
+      <button class="btn btn-primary" onclick="createUser()" data-i18n="users.create_btn">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit User Modal -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal glassmorphism-modal">
+    <button class="modal-close" onclick="closeEditModal()">&times;</button>
+    <h3 data-i18n="users.edit_title">Edit User</h3>
+    <input type="hidden" id="editUsername">
+    <div class="form-group">
+      <label data-i18n="users.data_limit_gb">Data Limit (GB)</label>
+      <input class="form-input" id="editDataLimit" type="number" min="0">
+    </div>
+    <div class="form-group">
+      <label data-i18n="users.expire_date">Expire Date</label>
+      <input class="form-input" id="editExpire" type="date">
+    </div>
+    <div class="form-group">
+      <label data-i18n="users.device_limit">Device Limit</label>
+      <input class="form-input" id="editDeviceLimit" type="number" min="0">
+    </div>
+    <div class="form-group">
+      <label data-i18n="users.note">Note</label>
+      <input class="form-input" id="editNote">
+    </div>
+    <div class="save-bar">
+      <button class="btn btn-secondary" onclick="closeEditModal()" data-i18n="users.cancel">Cancel</button>
+      <button class="btn btn-primary" onclick="saveUser()" data-i18n="users.save">Save</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -44,10 +114,7 @@ let currentSort = { key: null, asc: true };
 function badgeClass(status) {
   return 'badge badge-' + ({ active: 'active', expired: 'expired', disabled: 'disabled', limited: 'limited' }[status] || 'expired');
 }
-
-function statusLabel(status) {
-  return t('users.' + status) || status;
-}
+function statusLabel(status) { return t('users.' + status) || status; }
 
 function trafficBar(pct) {
   if (pct === null || pct === undefined) return `<span style="color:var(--text-3)">∞</span>`;
@@ -61,10 +128,20 @@ function formatTime(iso) {
   return d.toLocaleDateString() + ' ' + d.toLocaleTimeString().slice(0,5);
 }
 
+function actionBtns(u) {
+  return `<div class="action-btns">
+    <button class="action-btn" title="${t('users.edit')}" onclick="event.stopPropagation();openEditModal('${u.username}',${u.traffic_limit_gb||0},'${u.expire||''}',${u.devices||0},'')">✏️</button>
+    <button class="action-btn" title="${t('users.toggle')}" onclick="event.stopPropagation();toggleUser('${u.username}','${u.status}')">⏸️</button>
+    <button class="action-btn" title="${t('users.reset')}" onclick="event.stopPropagation();resetTraffic('${u.username}')">🔄</button>
+    <button class="action-btn" title="${t('users.sub_url')}" onclick="event.stopPropagation();copySub('${u.username}')">📋</button>
+    <button class="action-btn btn-danger" title="${t('users.delete')}" onclick="event.stopPropagation();deleteUser('${u.username}')">🗑️</button>
+  </div>`;
+}
+
 function renderUsers(users) {
   const tbody = document.getElementById('usersBody');
   if (!users.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-3);padding:40px">No users found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-3);padding:40px">No users found</td></tr>';
     return;
   }
   tbody.innerHTML = users.map(u => `
@@ -75,6 +152,7 @@ function renderUsers(users) {
       <td>${u.devices}</td>
       <td>${formatTime(u.last_online)}</td>
       <td>${u.tier || '—'}</td>
+      <td>${actionBtns(u)}</td>
     </tr>
   `).join('');
 }
@@ -109,6 +187,107 @@ function sortBy(key) {
   filterUsers();
 }
 
+// ── Modal helpers ──
+function openCreateModal() { document.getElementById('createModal').classList.add('open'); }
+function closeCreateModal() { document.getElementById('createModal').classList.remove('open'); }
+function openEditModal(username, limitGb, expire, devLimit, note) {
+  document.getElementById('editUsername').value = username;
+  document.getElementById('editDataLimit').value = limitGb || '';
+  if (expire) { document.getElementById('editExpire').value = new Date(expire).toISOString().slice(0,10); }
+  else { document.getElementById('editExpire').value = ''; }
+  document.getElementById('editDeviceLimit').value = devLimit || '';
+  document.getElementById('editNote').value = note || '';
+  document.getElementById('editModal').classList.add('open');
+}
+function closeEditModal() { document.getElementById('editModal').classList.remove('open'); }
+
+// ── Actions ──
+async function createUser() {
+  const username = document.getElementById('createUsername').value.trim();
+  if (!username) { showToast(t('users.err_username') || 'Username required'); return; }
+  const data_limit_gb = parseFloat(document.getElementById('createDataLimit').value) || 0;
+  const months = parseInt(document.getElementById('createDuration').value) || 1;
+  const ip_limit = parseInt(document.getElementById('createDeviceLimit').value) || 0;
+  const note = document.getElementById('createNote').value.trim();
+  try {
+    await fetchApi('/api/users', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ username, data_limit_gb: data_limit_gb || null, months, ip_limit: ip_limit || null, note: note || null }) });
+    showToast(t('users.created') || 'User created');
+    closeCreateModal();
+    allUsers = await fetchApi('/api/users');
+    filterUsers();
+  } catch (e) {
+    showToast((t('users.err_create') || 'Create error') + ': ' + e.message);
+  }
+}
+
+async function saveUser() {
+  const username = document.getElementById('editUsername').value;
+  const data_limit_gb = parseFloat(document.getElementById('editDataLimit').value) || 0;
+  const expireStr = document.getElementById('editExpire').value;
+  const ip_limit = parseInt(document.getElementById('editDeviceLimit').value) || 0;
+  const note = document.getElementById('editNote').value.trim();
+  const payload = { data_limit_gb: data_limit_gb || null, ip_limit: ip_limit || null, note };
+  if (expireStr) { payload.expire = Math.floor(new Date(expireStr).getTime() / 1000); }
+  else { payload.expire = 0; }
+  try {
+    await fetchApi(`/api/users/${username}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    showToast(t('users.updated') || 'User updated');
+    closeEditModal();
+    allUsers = await fetchApi('/api/users');
+    filterUsers();
+  } catch (e) {
+    showToast((t('users.err_update') || 'Update error') + ': ' + e.message);
+  }
+}
+
+async function deleteUser(username) {
+  if (!confirm(t('users.confirm_delete') || `Delete ${username}?`)) return;
+  try {
+    await fetchApi(`/api/users/${username}`, { method: 'DELETE' });
+    showToast(t('users.deleted') || 'User deleted');
+    allUsers = await fetchApi('/api/users');
+    filterUsers();
+  } catch (e) {
+    showToast((t('users.err_delete') || 'Delete error') + ': ' + e.message);
+  }
+}
+
+async function toggleUser(username, status) {
+  const next = status === 'active' ? 'disabled' : 'active';
+  try {
+    await fetchApi(`/api/users/${username}/toggle`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ status: next }) });
+    showToast(t('users.toggled') || 'Status changed');
+    allUsers = await fetchApi('/api/users');
+    filterUsers();
+  } catch (e) {
+    showToast((t('users.err_toggle') || 'Toggle error') + ': ' + e.message);
+  }
+}
+
+async function resetTraffic(username) {
+  if (!confirm(t('users.confirm_reset') || `Reset traffic for ${username}?`)) return;
+  try {
+    await fetchApi(`/api/users/${username}/reset-traffic`, { method: 'POST' });
+    showToast(t('users.traffic_reset') || 'Traffic reset');
+    allUsers = await fetchApi('/api/users');
+    filterUsers();
+  } catch (e) {
+    showToast((t('users.err_reset') || 'Reset error') + ': ' + e.message);
+  }
+}
+
+async function copySub(username) {
+  try {
+    const data = await fetchApi(`/api/users/${username}/subscription`);
+    if (data.url) {
+      await navigator.clipboard.writeText(data.url);
+      showToast(t('users.copied') || 'Subscription URL copied');
+    }
+  } catch (e) {
+    showToast((t('users.err_sub') || 'Copy error') + ': ' + e.message);
+  }
+}
+
 async function onPageLoad() {
   try {
     allUsers = await fetchApi('/api/users');
@@ -118,7 +297,6 @@ async function onPageLoad() {
     document.getElementById('usersLoading').innerHTML = '<p style="text-align:center;color:var(--accent-red)">Failed to load users</p>';
   }
 }
-
 function onPageLangChange() { onPageLoad(); }
 </script>
 {% endblock %}

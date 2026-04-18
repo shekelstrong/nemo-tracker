@@ -323,6 +323,105 @@ async def api_user_detail(username: str):
         }
 
 
+# ---------------------------------------------------------------------------
+# API routes — User management (Marzban)
+# ---------------------------------------------------------------------------
+
+@web_app.post("/api/users")
+async def api_create_user(request: Request):
+    data = await request.json()
+    username = data.get("username")
+    if not username:
+        raise HTTPException(400, "username is required")
+    data_limit_gb = data.get("data_limit_gb")
+    months = data.get("months", 1)
+    ip_limit = data.get("ip_limit")
+    note = data.get("note")
+
+    data_limit_bytes = int(data_limit_gb * 1024**3) if data_limit_gb else None
+    expire_date = int((datetime.utcnow() + timedelta(days=months * 30)).timestamp()) if months else None
+
+    try:
+        user = await marzban_client.create_user(
+            username=username,
+            data_limit_bytes=data_limit_bytes,
+            expire_date=expire_date,
+            ip_limit=ip_limit,
+            note=note,
+        )
+        return user
+    except Exception as e:
+        logger.error(f"Create user error: {e}")
+        raise HTTPException(500, str(e))
+
+
+@web_app.put("/api/users/{username}")
+async def api_update_user(username: str, request: Request):
+    data = await request.json()
+    payload = {}
+    if "data_limit_gb" in data:
+        payload["data_limit"] = int(data["data_limit_gb"] * 1024**3) if data["data_limit_gb"] else 0
+    if "expire" in data:
+        payload["expire"] = int(data["expire"]) if data["expire"] else 0
+    if "ip_limit" in data:
+        payload["max_ip"] = data["ip_limit"]
+    if "note" in data:
+        payload["note"] = data["note"]
+    if "status" in data:
+        payload["status"] = data["status"]
+    try:
+        return await marzban_client.update_user(username, **payload)
+    except Exception as e:
+        logger.error(f"Update user error: {e}")
+        raise HTTPException(500, str(e))
+
+
+@web_app.delete("/api/users/{username}")
+async def api_delete_user(username: str):
+    try:
+        await marzban_client.delete_user(username)
+        return {"ok": True}
+    except Exception as e:
+        logger.error(f"Delete user error: {e}")
+        raise HTTPException(500, str(e))
+
+
+@web_app.post("/api/users/{username}/reset-traffic")
+async def api_reset_traffic(username: str):
+    try:
+        return await marzban_client.reset_user_traffic(username)
+    except Exception as e:
+        logger.error(f"Reset traffic error: {e}")
+        raise HTTPException(500, str(e))
+
+
+@web_app.post("/api/users/{username}/toggle")
+async def api_toggle_user(username: str, request: Request):
+    data = await request.json()
+    status = data.get("status")
+    if status not in ("active", "disabled"):
+        raise HTTPException(400, "status must be active or disabled")
+    try:
+        return await marzban_client.update_user(username, status=status)
+    except Exception as e:
+        logger.error(f"Toggle user error: {e}")
+        raise HTTPException(500, str(e))
+
+
+@web_app.get("/api/users/{username}/subscription")
+async def api_get_subscription(username: str):
+    try:
+        url = await marzban_client.get_user_subscription_url(username)
+        if not url:
+            raise HTTPException(404, "Subscription URL not found")
+        return {"url": url}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get subscription error: {e}")
+        raise HTTPException(500, str(e))
+
+
 @web_app.get("/api/devices")
 async def api_devices():
     overview = await device_tracker.get_all_overview()

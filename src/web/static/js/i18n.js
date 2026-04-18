@@ -34,6 +34,47 @@ const T = {
   "users.limited": { en: "Limited", ru: "Ограничен" },
   "users.unlimited": { en: "Unlimited", ru: "Безлимит" },
   "users.back": { en: "← Back to Users", ru: "← Назад к списку" },
+  "users.new_user": { en: "New User", ru: "Новый пользователь" },
+  "users.actions": { en: "Actions", ru: "Действия" },
+  "users.edit": { en: "Edit", ru: "Редактировать" },
+  "users.toggle": { en: "Toggle", ru: "Вкл/Выкл" },
+  "users.reset": { en: "Reset", ru: "Сброс" },
+  "users.delete": { en: "Delete", ru: "Удалить" },
+  "users.sub_url": { en: "Subscription URL", ru: "Ссылка подписки" },
+  "users.copy": { en: "Copy", ru: "Копировать" },
+  "users.create_title": { en: "New User", ru: "Новый пользователь" },
+  "users.edit_title": { en: "Edit User", ru: "Редактирование" },
+  "users.username_ph": { en: "username", ru: "имя пользователя" },
+  "users.data_limit_gb": { en: "Data Limit (GB)", ru: "Лимит трафика (GB)" },
+  "users.duration": { en: "Duration", ru: "Длительность" },
+  "users.device_limit": { en: "Device Limit", ru: "Лимит устройств" },
+  "users.note": { en: "Note", ru: "Заметка" },
+  "users.note_ph": { en: "Optional note", ru: "Необязательная заметка" },
+  "users.expire_date": { en: "Expire Date", ru: "Дата истечения" },
+  "users.cancel": { en: "Cancel", ru: "Отмена" },
+  "users.create_btn": { en: "Create", ru: "Создать" },
+  "users.save": { en: "Save", ru: "Сохранить" },
+  "users.err_username": { en: "Username required", ru: "Укажите имя пользователя" },
+  "users.err_create": { en: "Create error", ru: "Ошибка создания" },
+  "users.err_update": { en: "Update error", ru: "Ошибка обновления" },
+  "users.err_delete": { en: "Delete error", ru: "Ошибка удаления" },
+  "users.err_toggle": { en: "Toggle error", ru: "Ошибка переключения" },
+  "users.err_reset": { en: "Reset error", ru: "Ошибка сброса" },
+  "users.err_sub": { en: "Copy error", ru: "Ошибка копирования" },
+  "users.created": { en: "User created", ru: "Пользователь создан" },
+  "users.updated": { en: "User updated", ru: "Пользователь обновлён" },
+  "users.deleted": { en: "User deleted", ru: "Пользователь удалён" },
+  "users.toggled": { en: "Status changed", ru: "Статус изменён" },
+  "users.traffic_reset": { en: "Traffic reset", ru: "Трафик сброшен" },
+  "users.copied": { en: "Copied to clipboard", ru: "Скопировано" },
+  "users.confirm_delete": { en: "Are you sure you want to delete this user?", ru: "Удалить этого пользователя?" },
+  "users.confirm_reset": { en: "Reset traffic for this user?", ru: "Сбросить трафик?" },
+
+  // User Detail extra
+  "ud.subscription": { en: "Subscription", ru: "Подписка" },
+  "ud.manage_sub": { en: "Manage Subscription", ru: "Управление подпиской" },
+  "ud.month": { en: "month", ru: "месяц" },
+  "ud.months": { en: "months", ru: "месяцев" },
 
   // User Detail
   "ud.traffic_7d": { en: "Traffic (7 days)", ru: "Трафик (7 дней)" },
@@ -102,6 +143,18 @@ const T = {
   // Footer
   "footer.version": { en: "Nemo Tracker v0.1 · Open Source", ru: "Nemo Tracker v0.1 · Open Source" },
 };
+
+// Fetch online count for sidebar badge
+setInterval(async () => {
+  try {
+    const d = await fetch('/api/dashboard').then(r=>r.json());
+    const badge = document.getElementById('onlineBadge');
+    if (badge && d.stats) {
+      badge.textContent = d.stats.online_now || 0;
+      badge.style.display = 'inline-block';
+    }
+  } catch {}
+}, 30000);
 
 let _lang = localStorage.getItem("nemo_lang") || "en";
 
