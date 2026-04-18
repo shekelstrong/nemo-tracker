@@ -1,73 +1,51 @@
 {% extends "base.html" %}
 {% block title %}{{ username }} — Nemo Tracker{% endblock %}
-{% block nav_users %}active{% endblock %}
-{% block page_title %}User: {{ username }}{% endblock %}
+{% block topbar_title %}nav.users{% endblock %}
 
 {% block content %}
-<div x-data="userDetail()" class="space-y-6">
-  <!-- Header card -->
-  <div class="glass-card p-5 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-    <div>
-      <h2 class="text-xl font-bold text-white" x-text="d.username"></h2>
-      <div class="flex gap-3 mt-1 text-xs text-gray-400">
-        <span>Created: <span x-text="d.created"></span></span>
-        <span>Expire: <span x-text="d.expire"></span></span>
-        <span>Devices: <span x-text="d.devices + '/' + d.device_limit"></span></span>
-      </div>
-    </div>
-    <div class="flex gap-2">
-      <span class="px-3 py-1 rounded-full text-xs bg-green-500/20 text-green-400" x-text="d.status"></span>
-    </div>
-  </div>
+<a href="/users" style="font-size:13px;color:var(--primary);margin-bottom:20px;display:inline-block" data-i18n="users.back">← Back to Users</a>
 
-  <!-- Traffic chart -->
-  <div class="glass-card p-4">
-    <h3 class="text-sm font-medium text-gray-400 mb-3"><i class="fas fa-chart-area mr-1"></i> Traffic (7 days, GB)</h3>
-    <canvas id="chart-traffic" height="200"></canvas>
-  </div>
+<div id="detailLoading"><div class="spinner"></div></div>
+<div id="detailContent" style="display:none">
+  <!-- Header -->
+  <div class="user-header" id="userHeader"></div>
 
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-    <!-- IP History -->
-    <div class="glass-card p-4">
-      <h3 class="text-sm font-medium text-gray-400 mb-3"><i class="fas fa-globe mr-1"></i> IP History</h3>
-      <div class="space-y-2">
-        <template x-for="ip in d.ip_history" :key="ip.ip">
-          <div class="bg-white/5 rounded-lg px-3 py-2 flex items-center justify-between text-sm">
-            <div>
-              <div class="text-white font-mono" x-text="ip.ip"></div>
-              <div class="text-xs text-gray-500" x-text="ip.city + ', ' + ip.country"></div>
-            </div>
-            <div class="text-right text-xs text-gray-500">
-              <div x-text="'First: ' + ip.first"></div>
-              <div x-text="'Last: ' + ip.last"></div>
-            </div>
-          </div>
-        </template>
-      </div>
+  <!-- Info cards -->
+  <div class="detail-info-grid" id="infoGrid"></div>
+
+  <!-- Charts & tables -->
+  <div class="detail-grid">
+    <div class="chart-card">
+      <h3 data-i18n="ud.traffic_7d">Traffic (7 days)</h3>
+      <div style="height:240px"><canvas id="chartTraffic7d"></canvas></div>
     </div>
-
-    <!-- Connection timeline -->
-    <div class="glass-card p-4">
-      <h3 class="text-sm font-medium text-gray-400 mb-3"><i class="fas fa-timeline mr-1"></i> Recent Connections</h3>
-      <div class="space-y-2">
-        <template x-for="c in d.connections" :key="c.time">
-          <div class="bg-white/5 rounded-lg px-3 py-2 flex items-center justify-between text-sm">
-            <div>
-              <div class="text-white" x-text="c.device"></div>
-              <div class="text-xs text-gray-500 font-mono" x-text="c.ip"></div>
-            </div>
-            <span class="text-xs text-gray-500" x-text="c.time"></span>
-          </div>
-        </template>
+    <div class="glass-card">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:16px" data-i18n="ud.connections">Recent Connections</h3>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr>
+            <th data-i18n="ud.time">Time</th>
+            <th data-i18n="ud.duration">Duration</th>
+          </tr></thead>
+          <tbody id="connBody"></tbody>
+        </table>
       </div>
     </div>
   </div>
 
-  <!-- Map placeholder -->
-  <div class="glass-card p-4 text-center">
-    <h3 class="text-sm font-medium text-gray-400 mb-3"><i class="fas fa-map mr-1"></i> Connection Map</h3>
-    <div class="h-48 rounded-lg bg-white/5 flex items-center justify-center text-gray-600">
-      <i class="fas fa-map-location-dot text-4xl"></i>
+  <!-- IP History -->
+  <div class="glass-card" style="margin-top:20px">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:16px" data-i18n="ud.ip_history">IP History</h3>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr>
+          <th data-i18n="ud.ip">IP</th>
+          <th data-i18n="ud.location">Location</th>
+          <th data-i18n="ud.first_seen">First Seen</th>
+          <th data-i18n="ud.last_seen">Last Seen</th>
+        </tr></thead>
+        <tbody id="ipBody"></tbody>
+      </table>
     </div>
   </div>
 </div>
@@ -75,32 +53,79 @@
 
 {% block scripts %}
 <script>
-function userDetail() {
-  return {
-    d: { username: '{{ username }}', status: '—', created: '', expire: '', devices: 0, device_limit: 0,
-         traffic_7d: [], ip_history: [], connections: [] },
-    async init() {
-      this.d = await (await fetch('/api/users/{{ username }}')).json();
-      this.renderChart();
-    },
-    renderChart() {
-      const gridColor = 'rgba(255,255,255,0.06)';
-      const tickColor = '#6b7280';
-      new Chart(document.getElementById('chart-traffic'), {
-        type: 'bar', data: {
-          labels: this.d.traffic_7d.map(i => i.day),
-          datasets: [
-            { label: 'Download', data: this.d.traffic_7d.map(i => i.dl),
-              backgroundColor: 'rgba(124,58,237,0.6)', borderRadius: 4 },
-            { label: 'Upload', data: this.d.traffic_7d.map(i => i.ul),
-              backgroundColor: 'rgba(59,130,246,0.5)', borderRadius: 4 },
-          ]
-        }, options: { responsive: true, plugins: { legend: { labels: { color: tickColor } } },
-          scales: { x: { grid: { color: gridColor }, ticks: { color: tickColor } },
-                    y: { grid: { color: gridColor }, ticks: { color: tickColor } } } }
-      });
-    }
-  };
+const COUNTRY_FLAGS = { US:'🇺🇸', RU:'🇷🇺', DE:'🇩🇪', NL:'🇳🇱', GB:'🇬🇧', FR:'🇫🇷', JP:'🇯🇵', CN:'🇨🇳', KR:'🇰🇷', UA:'🇺🇦', TR:'🇹🇷', IN:'🇮🇳', BR:'🇧🇷', CA:'🇨🇦', AU:'🇦🇺', SG:'🇸🇬', HK:'🇭🇰', PL:'🇵🇱', FI:'🇫🇮', SE:'🇸🇪' };
+
+function flag(country) { return COUNTRY_FLAGS[country] || '🏳️'; }
+
+function badgeClass(status) {
+  return 'badge badge-' + ({ active:'active', expired:'expired', disabled:'disabled', limited:'limited' }[status] || 'expired');
 }
+
+async function onPageLoad() {
+  try {
+    const u = await fetchApi('/api/users/{{ username }}');
+    document.getElementById('detailLoading').style.display = 'none';
+    document.getElementById('detailContent').style.display = 'block';
+
+    // Header
+    document.getElementById('userHeader').innerHTML = `
+      <div class="avatar" style="width:56px;height:56px;font-size:22px;border-radius:14px">${u.username[0].toUpperCase()}</div>
+      <div class="info">
+        <h2>${u.username}</h2>
+        <div class="meta">
+          <span class="${badgeClass(u.status)}">${t('users.'+u.status)||u.status}</span>
+          <span>•</span>
+          <span>Tier ${u.tier}</span>
+        </div>
+      </div>
+    `;
+
+    // Info grid
+    document.getElementById('infoGrid').innerHTML = `
+      <div class="detail-stat"><div class="label" data-i18n="ud.created">${t('ud.created')}</div><div class="val">${u.created}</div></div>
+      <div class="detail-stat"><div class="label" data-i18n="ud.expire">${t('ud.expire')}</div><div class="val">${u.expire || t('ud.no_expire')}</div></div>
+      <div class="detail-stat"><div class="label" data-i18n="ud.device_count">${t('ud.device_count')}</div><div class="val">${u.devices} / ${u.device_limit || '∞'}</div></div>
+    `;
+
+    // Traffic chart
+    const ctx = document.getElementById('chartTraffic7d').getContext('2d');
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: u.traffic_7d.map(d => d.day),
+        datasets: [{
+          data: u.traffic_7d.map(d => d.dl),
+          borderColor: getChartColors().primary,
+          backgroundColor: makeGradient(ctx, 'rgba(108,92,231,0.25)', 'rgba(108,92,231,0)'),
+          fill: true, tension: 0.4, borderWidth: 2, pointRadius: 3, pointBackgroundColor: getChartColors().primary,
+        }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, animation: { duration: 800 },
+        plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(30,32,48,0.9)', cornerRadius: 8, padding: 10, displayColors: false, callbacks: { label: c => c.raw + ' GB' } } },
+        scales: scaleOpts()
+      }
+    });
+
+    // Connections
+    document.getElementById('connBody').innerHTML = u.connections.map(c => `
+      <tr><td>${c.time}</td><td>${c.duration}</td></tr>
+    `).join('') || '<tr><td colspan="2" style="color:var(--text-3)">—</td></tr>';
+
+    // IP History
+    document.getElementById('ipBody').innerHTML = u.ip_history.map(ip => `
+      <tr>
+        <td style="font-family:monospace">${ip.ip}</td>
+        <td>${flag(ip.country)} ${ip.city}, ${ip.country}</td>
+        <td>${ip.first}</td>
+        <td>${ip.last}</td>
+      </tr>
+    `).join('') || '<tr><td colspan="4" style="color:var(--text-3)">—</td></tr>';
+
+  } catch (e) {
+    document.getElementById('detailLoading').innerHTML = '<p style="text-align:center;color:var(--accent-red)">User not found</p>';
+  }
+}
+
+function onPageLangChange() { onPageLoad(); }
 </script>
 {% endblock %}

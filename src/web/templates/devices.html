@@ -1,117 +1,117 @@
 {% extends "base.html" %}
-{% block title %}Device Tracker — Nemo Tracker{% endblock %}
-{% block nav_devices %}active{% endblock %}
-{% block page_title %}Device Tracker{% endblock %}
+{% block title %}Devices — Nemo Tracker{% endblock %}
+{% block topbar_title %}nav.devices{% endblock %}
 
 {% block content %}
-<!-- Summary cards -->
-<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6" id="device-summary"></div>
+<!-- Summary Cards -->
+<div class="stats-grid" id="devStats" style="margin-bottom:28px"></div>
 
 <!-- Table -->
-<div class="glass-card p-4">
-  <div class="flex items-center gap-3 mb-4">
-    <input id="dev-search" type="text" placeholder="Search..."
-      class="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-400 w-full sm:w-64" />
-  </div>
-  <div class="overflow-x-auto">
-    <table class="w-full text-sm">
-      <thead>
-        <tr class="text-gray-400 text-left border-b border-white/5">
-          <th class="pb-2">Username</th>
-          <th class="pb-2">Unique IPs</th>
-          <th class="pb-2">Device Limit</th>
-          <th class="pb-2">Status</th>
-          <th class="pb-2">Actions</th>
-        </tr>
-      </thead>
-      <tbody id="devices-tbody"></tbody>
+<div class="glass-card" style="padding:0;overflow:hidden">
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr>
+        <th data-i18n="users.username">Username</th>
+        <th data-i18n="dev.unique_ips">Unique IPs</th>
+        <th data-i18n="dev.limit">Limit</th>
+        <th data-i18n="users.status">Status</th>
+      </tr></thead>
+      <tbody id="devBody"></tbody>
     </table>
   </div>
 </div>
 
-<!-- Detail modal -->
-<div x-data="deviceApp()" x-show="showDetail" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-     @click.self="showDetail=false">
-  <div class="glass-card w-full max-w-lg mx-4 p-5 max-h-[80vh] overflow-y-auto" @click.stop>
-    <div class="flex items-center justify-between mb-4">
-      <h3 class="font-bold text-white" x-text="'Devices: ' + detail.username"></h3>
-      <button @click="showDetail=false" class="text-gray-400 hover:text-white"><i class="fas fa-xmark"></i></button>
-    </div>
-    <table class="w-full text-sm">
-      <thead>
-        <tr class="text-gray-400 text-left border-b border-white/5">
-          <th class="pb-2">IP</th>
-          <th class="pb-2">Location</th>
-          <th class="pb-2">First Seen</th>
-          <th class="pb-2">Last Seen</th>
-        </tr>
-      </thead>
-      <tbody>
-        <template x-for="ip in detail.ips" :key="ip.ip">
-          <tr class="border-b border-white/5">
-            <td class="py-2 font-mono text-white" x-text="ip.ip"></td>
-            <td class="py-2" x-text="ip.country + ' ' + ip.city"></td>
-            <td class="py-2 text-gray-400" x-text="ip.first_seen"></td>
-            <td class="py-2 text-gray-400" x-text="ip.last_seen"></td>
-          </tr>
-        </template>
-      </tbody>
-    </table>
+<div id="devLoading"><div class="spinner"></div></div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="devModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeDevModal()">&times;</button>
+    <h3 id="devModalTitle"></h3>
+    <div id="devModalContent"></div>
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-function deviceApp() {
-  return { showDetail: false, detail: { username: '', ips: [] },
-    async open(u) { this.detail = await (await fetch('/api/devices/' + u)).json(); this.showDetail = true; }
-  };
+let allDevices = [];
+
+function devStatusBadge(count, limit) {
+  if (limit && count > limit) return '<span class="badge badge-disabled">' + t('dev.over_limit') + '</span>';
+  if (limit && count === limit) return '<span class="badge badge-limited">' + t('dev.at_limit') + '</span>';
+  return '<span class="badge badge-active">' + t('dev.ok') + '</span>';
 }
 
-(async () => {
-  const devices = await (await fetch('/api/devices')).json();
-  const ok = devices.filter(d => d.status === 'ok').length;
-  const warn = devices.filter(d => d.status === 'warning').length;
-  const over = devices.filter(d => d.status === 'over').length;
+function miniBar(pct) {
+  return `<div class="mini-bar"><div class="fill" style="width:${Math.min(pct,100)}%"></div></div>`;
+}
 
-  document.getElementById('device-summary').innerHTML = [
-    { label: 'OK', value: ok, icon: 'fa-check-circle', color: 'from-green-500 to-green-700' },
-    { label: 'Warning', value: warn, icon: 'fa-exclamation-triangle', color: 'from-yellow-500 to-yellow-700' },
-    { label: 'Over Limit', value: over, icon: 'fa-times-circle', color: 'from-red-500 to-red-700' },
-  ].map(c => `
-    <div class="glass-card flex items-center gap-4 p-4">
-      <div class="w-11 h-11 rounded-xl bg-gradient-to-br ${c.color} flex items-center justify-center shrink-0">
-        <i class="fas ${c.icon} text-white"></i>
-      </div>
-      <div><div class="text-2xl font-bold text-white">${c.value}</div>
-      <div class="text-xs text-gray-400">${c.label}</div></div>
-    </div>
-  `).join('');
-
-  const statusBadge = s => {
-    const c = { ok: 'bg-green-500/20 text-green-400', warning: 'bg-yellow-500/20 text-yellow-400',
-      over: 'bg-red-500/20 text-red-400' }[s];
-    return `<span class="px-2 py-0.5 rounded-full text-xs ${c}">${s.toUpperCase()}</span>`;
-  };
-
-  function render(list) {
-    document.getElementById('devices-tbody').innerHTML = list.map(d => `
-      <tr class="border-b border-white/5 hover:bg-white/5">
-        <td class="py-3 font-medium text-white">${d.username}</td>
-        <td class="py-3">${d.unique_ips}</td>
-        <td class="py-3">${d.device_limit}</td>
-        <td class="py-3">${statusBadge(d.status)}</td>
-        <td class="py-3"><button onclick="document.querySelector('[x-data]').__x.$data.open('${d.username}')"
-          class="text-brand-400 hover:text-brand-300 text-xs"><i class="fas fa-eye mr-1"></i>Details</button></td>
-      </tr>
-    `).join('');
-  }
-
-  render(devices);
-  document.getElementById('dev-search').addEventListener('input', e => {
-    render(devices.filter(d => d.username.includes(e.target.value.toLowerCase())));
+function renderDevices() {
+  let over = 0, at = 0, ok = 0;
+  allDevices.forEach(d => {
+    if (d.device_limit && d.unique_ips > d.device_limit) over++;
+    else if (d.device_limit && d.unique_ips === d.device_limit) at++;
+    else ok++;
   });
-})();
+
+  document.getElementById('devStats').innerHTML = `
+    <div class="stat-card"><div class="stat-info"><h3 data-i18n="dev.total">${t('dev.total')}</h3><div class="value">${allDevices.length}</div></div><div class="stat-icon purple"><i class="fas fa-laptop"></i></div></div>
+    <div class="stat-card"><div class="stat-info"><h3 data-i18n="dev.over_limit">${t('dev.over_limit')}</h3><div class="value">${over}</div></div><div class="stat-icon" style="background:var(--badge-disabled-bg);color:var(--accent-red)"><i class="fas fa-exclamation-triangle"></i></div></div>
+    <div class="stat-card"><div class="stat-info"><h3 data-i18n="dev.at_limit">${t('dev.at_limit')}</h3><div class="value">${at}</div></div><div class="stat-icon orange"><i class="fas fa-exclamation-circle"></i></div></div>
+    <div class="stat-card"><div class="stat-info"><h3 data-i18n="dev.ok">${t('dev.ok')}</h3><div class="value">${ok}</div></div><div class="stat-icon green"><i class="fas fa-check-circle"></i></div></div>
+  `;
+
+  document.getElementById('devBody').innerHTML = allDevices.map(d => {
+    const pct = d.device_limit ? (d.unique_ips / d.device_limit * 100) : 0;
+    return `
+      <tr onclick="openDevModal('${d.username}')">
+        <td><div class="user-cell"><div class="avatar">${d.username[0].toUpperCase()}</div>${d.username}</div></td>
+        <td>${d.unique_ips} ${miniBar(pct)}</td>
+        <td>${d.device_limit || '∞'}</td>
+        <td>${devStatusBadge(d.unique_ips, d.device_limit)}</td>
+      </tr>
+    `;
+  }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-3);padding:40px">No data</td></tr>';
+}
+
+async function openDevModal(username) {
+  try {
+    const data = await fetchApi('/api/devices/' + username);
+    document.getElementById('devModalTitle').textContent = username;
+    document.getElementById('devModalContent').innerHTML = `
+      <p style="margin-bottom:12px;color:var(--text-2)">${t('dev.limit')}: ${data.device_limit || '∞'}</p>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>IP</th><th>${t('ud.location')}</th><th>${t('ud.last_seen')}</th></tr></thead>
+          <tbody>${(data.ips || []).map(ip => `
+            <tr><td style="font-family:monospace">${ip.ip}</td><td>${ip.country || '?'} ${ip.city || ''}</td><td>${ip.last_seen || '—'}</td></tr>
+          `).join('') || '<tr><td colspan="3" style="color:var(--text-3)">No IPs</td></tr>'}</tbody>
+        </table>
+      </div>
+    `;
+    document.getElementById('devModal').classList.add('open');
+  } catch {}
+}
+
+function closeDevModal() {
+  document.getElementById('devModal').classList.remove('open');
+}
+
+document.getElementById('devModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeDevModal();
+});
+
+async function onPageLoad() {
+  try {
+    allDevices = await fetchApi('/api/devices');
+    document.getElementById('devLoading').style.display = 'none';
+    renderDevices();
+  } catch (e) {
+    document.getElementById('devLoading').innerHTML = '<p style="text-align:center;color:var(--accent-red)">Failed to load</p>';
+  }
+}
+
+function onPageLangChange() { onPageLoad(); }
 </script>
 {% endblock %}

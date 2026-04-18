@@ -1,121 +1,197 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — Nemo Tracker{% endblock %}
-{% block nav_dashboard %}active{% endblock %}
-{% block page_title %}Dashboard{% endblock %}
+{% block topbar_title %}nav.dashboard{% endblock %}
 
 {% block content %}
-<!-- Stat cards -->
-<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6" id="stat-cards">
-  <!-- filled by JS -->
-</div>
+<div id="dashLoading"><div class="spinner"></div></div>
+<div id="dashContent" style="display:none">
 
-<!-- Charts row 1 -->
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-  <div class="glass-card p-4">
-    <h3 class="text-sm font-medium text-gray-400 mb-3"><i class="fas fa-signal mr-1"></i> Online Users (24h)</h3>
-    <canvas id="chart-online" height="220"></canvas>
-  </div>
-  <div class="glass-card p-4">
-    <h3 class="text-sm font-medium text-gray-400 mb-3"><i class="fas fa-cloud-arrow-down mr-1"></i> Traffic (30 days, GB)</h3>
-    <canvas id="chart-traffic" height="220"></canvas>
-  </div>
-</div>
+  <!-- Stat Cards -->
+  <div class="stats-grid" id="statsGrid"></div>
 
-<!-- Charts row 2 -->
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-  <div class="glass-card p-4">
-    <h3 class="text-sm font-medium text-gray-400 mb-3"><i class="fas fa-user-plus mr-1"></i> User Growth</h3>
-    <canvas id="chart-growth" height="220"></canvas>
+  <!-- Charts Row 1 -->
+  <div class="charts-grid">
+    <div class="chart-card">
+      <h3 data-i18n="dash.online_24h">Online Users (24h)</h3>
+      <div style="height:260px"><canvas id="chartOnline"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3 data-i18n="dash.traffic_30d">Traffic (30d)</h3>
+      <div style="height:260px"><canvas id="chartTraffic"></canvas></div>
+    </div>
   </div>
-  <div class="glass-card p-4">
-    <h3 class="text-sm font-medium text-gray-400 mb-3"><i class="fas fa-clock mr-1"></i> Peak Hours</h3>
-    <canvas id="chart-peak" height="220"></canvas>
-  </div>
-</div>
 
-<!-- Recent alerts -->
-<div class="glass-card p-4">
-  <h3 class="text-sm font-medium text-gray-400 mb-3"><i class="fas fa-bell mr-1"></i> Recent Alerts</h3>
-  <div id="recent-alerts" class="space-y-2"><!-- filled by JS --></div>
+  <!-- Charts Row 2 -->
+  <div class="charts-grid">
+    <div class="chart-card">
+      <h3 data-i18n="dash.user_growth">User Growth</h3>
+      <div style="height:260px"><canvas id="chartGrowth"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3 data-i18n="dash.peak_hours">Peak Hours</h3>
+      <div style="height:260px"><canvas id="chartPeak"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Recent Alerts -->
+  <div class="glass-card" style="margin-top:20px">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:16px" data-i18n="dash.recent_alerts">Recent Alerts</h3>
+    <div class="alerts-list" id="alertsList"></div>
+  </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-(async () => {
-  const d = await (await fetch('/api/dashboard')).json();
+let charts = {};
 
-  // Stat cards
-  const cards = [
-    { label: 'Total Users', value: d.stats.total_users, icon: 'fa-users', color: 'from-blue-500 to-blue-700' },
-    { label: 'Active Users', value: d.stats.active_users, icon: 'fa-user-check', color: 'from-green-500 to-green-700' },
-    { label: 'Online Now', value: d.stats.online_now, icon: 'fa-wifi', color: 'from-brand-400 to-brand-600' },
-    { label: 'Total Traffic', value: d.stats.total_traffic, icon: 'fa-database', color: 'from-amber-500 to-amber-700' },
+function renderStats(stats) {
+  const items = [
+    { key: 'total_users', icon: 'fa-users', cls: 'purple', i18n: 'dash.total_users' },
+    { key: 'active_users', icon: 'fa-user-check', cls: 'green', i18n: 'dash.active_users' },
+    { key: 'online_now', icon: 'fa-signal', cls: 'blue', i18n: 'dash.online_now' },
+    { key: 'total_traffic', icon: 'fa-database', cls: 'orange', i18n: 'dash.total_traffic' },
   ];
-  document.getElementById('stat-cards').innerHTML = cards.map(c => `
-    <div class="glass-card flex items-center gap-4 p-4">
-      <div class="w-11 h-11 rounded-xl bg-gradient-to-br ${c.color} flex items-center justify-center shrink-0">
-        <i class="fas ${c.icon} text-white"></i>
+  document.getElementById('statsGrid').innerHTML = items.map(it => `
+    <div class="stat-card">
+      <div class="stat-info">
+        <h3 data-i18n="${it.i18n}">${t(it.i18n)}</h3>
+        <div class="value">${stats[it.key]}</div>
       </div>
-      <div>
-        <div class="text-2xl font-bold text-white">${c.value}</div>
-        <div class="text-xs text-gray-400">${c.label}</div>
-      </div>
+      <div class="stat-icon ${it.cls}"><i class="fas ${it.icon}"></i></div>
     </div>
   `).join('');
+}
 
-  // Charts
-  const gridColor = 'rgba(255,255,255,0.06)';
-  const tickColor = '#6b7280';
-  const defaultOpts = { responsive: true, plugins: { legend: { display: false } },
-    scales: { x: { grid: { color: gridColor }, ticks: { color: tickColor, maxTicksLimit: 12 } },
-              y: { grid: { color: gridColor }, ticks: { color: tickColor } } } };
+function alertIcon(type) {
+  if (type === 'device') return 'fa-laptop';
+  if (type === 'traffic') return 'fa-chart-line';
+  if (type === 'expire') return 'fa-clock';
+  return 'fa-info-circle';
+}
 
-  new Chart(document.getElementById('chart-online'), {
-    type: 'line', data: {
-      labels: d.online_24h.map(i => i.hour),
-      datasets: [{ data: d.online_24h.map(i => i.count), borderColor: '#7c3aed',
-        backgroundColor: 'rgba(124,58,237,0.15)', fill: true, tension: 0.4, pointRadius: 2 }]
-    }, options: defaultOpts
-  });
+function alertCls(type) {
+  if (type === 'device' || type === 'traffic') return 'warn';
+  if (type === 'expire') return 'info';
+  return 'danger';
+}
 
-  new Chart(document.getElementById('chart-traffic'), {
-    type: 'bar', data: {
-      labels: d.traffic_30d.map(i => i.day),
-      datasets: [{ data: d.traffic_30d.map(i => i.value),
-        backgroundColor: 'rgba(124,58,237,0.6)', borderRadius: 4 }]
-    }, options: defaultOpts
-  });
-
-  new Chart(document.getElementById('chart-growth'), {
-    type: 'line', data: {
-      labels: d.growth.map(i => i.month),
-      datasets: [{ data: d.growth.map(i => i.users), borderColor: '#10b981',
-        backgroundColor: 'rgba(16,185,129,0.15)', fill: true, tension: 0.4 }]
-    }, options: defaultOpts
-  });
-
-  new Chart(document.getElementById('chart-peak'), {
-    type: 'radar', data: {
-      labels: d.peak_hours.labels,
-      datasets: [{ data: d.peak_hours.values, borderColor: '#7c3aed',
-        backgroundColor: 'rgba(124,58,237,0.25)', pointBackgroundColor: '#7c3aed' }]
-    }, options: { responsive: true, plugins: { legend: { display: false } },
-      scales: { r: { grid: { color: gridColor }, angleLines: { color: gridColor },
-        ticks: { color: tickColor, backdropColor: 'transparent' },
-        pointLabels: { color: tickColor } } } }
-  });
-
-  // Alerts
-  const alertIcons = { device_over: 'fa-laptop text-red-400', traffic_80: 'fa-chart-bar text-yellow-400',
-    new_user: 'fa-user-plus text-blue-400', expiring: 'fa-clock text-orange-400' };
-  document.getElementById('recent-alerts').innerHTML = d.recent_alerts.map(a => `
-    <div class="flex items-center gap-3 bg-white/5 rounded-lg px-3 py-2">
-      <i class="fas ${alertIcons[a.type] || 'fa-bell text-gray-400'} w-5 text-center"></i>
-      <span class="flex-1 text-sm">${a.message}</span>
-      <span class="text-xs text-gray-500">${a.time}</span>
+function renderAlerts(alerts) {
+  const el = document.getElementById('alertsList');
+  if (!alerts.length) {
+    el.innerHTML = `<div style="color:var(--text-3);font-size:13px;padding:8px" data-i18n="dash.no_alerts">${t('dash.no_alerts')}</div>`;
+    return;
+  }
+  el.innerHTML = alerts.map(a => `
+    <div class="alert-item">
+      <div class="alert-icon ${alertCls(a.type)}"><i class="fas ${alertIcon(a.type)}"></i></div>
+      <div class="alert-msg">${a.message}</div>
+      <div class="alert-time">${a.time}</div>
     </div>
   `).join('');
-})();
+}
+
+function buildCharts(data) {
+  const sc = scaleOpts();
+
+  // Online 24h
+  const ctxOn = document.getElementById('chartOnline').getContext('2d');
+  charts.online = new Chart(ctxOn, {
+    type: 'line',
+    data: {
+      labels: data.online_24h.map(d => d.hour),
+      datasets: [{
+        data: data.online_24h.map(d => d.count),
+        borderColor: getChartColors().primary,
+        backgroundColor: makeGradient(ctxOn, 'rgba(108,92,231,0.25)', 'rgba(108,92,231,0)'),
+        fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHitRadius: 10,
+      }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, animation: { duration: 800 },
+      plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(30,32,48,0.9)', cornerRadius: 8, padding: 10, titleFont: { family: 'Inter' }, bodyFont: { family: 'Inter' }, displayColors: false } },
+      scales: sc
+    }
+  });
+
+  // Traffic 30d
+  const ctxTr = document.getElementById('chartTraffic').getContext('2d');
+  charts.traffic = new Chart(ctxTr, {
+    type: 'bar',
+    data: {
+      labels: data.traffic_30d.map(d => d.day),
+      datasets: [{
+        data: data.traffic_30d.map(d => d.value),
+        backgroundColor: makeGradient(ctxTr, 'rgba(108,92,231,0.7)', 'rgba(108,92,231,0.15)'),
+        borderRadius: 4, borderSkipped: false,
+      }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, animation: { duration: 800 },
+      plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(30,32,48,0.9)', cornerRadius: 8, padding: 10, titleFont: { family: 'Inter' }, bodyFont: { family: 'Inter' }, displayColors: false, callbacks: { label: c => c.raw + ' GB' } } },
+      scales: sc
+    }
+  });
+
+  // Growth
+  const ctxGr = document.getElementById('chartGrowth').getContext('2d');
+  charts.growth = new Chart(ctxGr, {
+    type: 'line',
+    data: {
+      labels: data.growth.map(d => d.date),
+      datasets: [
+        { label: 'Total', data: data.growth.map(d => d.total), borderColor: getChartColors().primary, backgroundColor: makeGradient(ctxGr, 'rgba(108,92,231,0.2)', 'rgba(108,92,231,0)'), fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0 },
+        { label: 'Active', data: data.growth.map(d => d.active), borderColor: getChartColors().green, backgroundColor: makeGradient(ctxGr, 'rgba(0,184,148,0.15)', 'rgba(0,184,148,0)'), fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0 },
+      ]
+    },
+    options: { responsive: true, maintainAspectRatio: false, animation: { duration: 800 },
+      plugins: { legend: { display: true, labels: { font: { family: 'Inter', size: 12 }, color: getChartColors().tickColor, usePointStyle: true, pointStyle: 'circle' } }, tooltip: { backgroundColor: 'rgba(30,32,48,0.9)', cornerRadius: 8, padding: 10, titleFont: { family: 'Inter' }, bodyFont: { family: 'Inter' }, displayColors: false } },
+      scales: sc
+    }
+  });
+
+  // Peak Hours — horizontal bar
+  const ctxPk = document.getElementById('chartPeak').getContext('2d');
+  charts.peak = new Chart(ctxPk, {
+    type: 'bar',
+    data: {
+      labels: data.peak_hours.labels,
+      datasets: [{
+        data: data.peak_hours.values,
+        backgroundColor: makeGradient(ctxPk, 'rgba(108,92,231,0.6)', 'rgba(108,92,231,0.1)'),
+        borderRadius: 4, borderSkipped: false,
+      }]
+    },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, animation: { duration: 800 },
+      plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(30,32,48,0.9)', cornerRadius: 8, padding: 10, titleFont: { family: 'Inter' }, bodyFont: { family: 'Inter' }, displayColors: false } },
+      scales: { x: sc.x, y: { ...sc.y, ticks: { ...sc.y.ticks, font: { family: 'Inter', size: 12 } } } }
+    }
+  });
+}
+
+async function onPageLoad() {
+  try {
+    const data = await fetchApi('/api/dashboard');
+    document.getElementById('dashLoading').style.display = 'none';
+    document.getElementById('dashContent').style.display = 'block';
+    renderStats(data.stats);
+    renderAlerts(data.recent_alerts);
+    buildCharts(data);
+  } catch (e) {
+    document.getElementById('dashLoading').innerHTML = '<p style="text-align:center;color:var(--accent-red)">Failed to load data</p>';
+  }
+}
+
+function onDashboardUpdate(data) {
+  if (!data) return;
+  renderStats(data.stats);
+  renderAlerts(data.recent_alerts);
+  // Update chart data
+  if (charts.online && data.online_24h) {
+    charts.online.data.labels = data.online_24h.map(d => d.hour);
+    charts.online.data.datasets[0].data = data.online_24h.map(d => d.count);
+    charts.online.update('none');
+  }
+}
+
+function onPageLangChange() { onPageLoad(); }
 </script>
 {% endblock %}
