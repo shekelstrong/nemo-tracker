@@ -67,6 +67,9 @@
       <a href="/auto-renewal" class="{% if page == 'auto-renewal' %}active{% endif %}">
         <i class="fas fa-sync-alt"></i> <span data-i18n="nav.auto_renewal">Auto-Renewal</span>
       </a>
+      <a href="/branding" class="{% if page == 'branding' %}active{% endif %}">
+        <i class="fas fa-palette"></i> <span data-i18n="nav.branding">🎨 Branding</span>
+      </a>
     </nav>
     <div class="sidebar-footer" data-i18n="footer.version">Nemo Tracker v0.1 · Open Source</div>
   </aside>
@@ -125,6 +128,40 @@
     await fetch('/api/auth/logout', {method:'POST'});
     window.location.href = '/login';
   }
+
+  // Branding integration
+  (async function() {
+    try {
+      const b = await fetch('/api/branding').then(r => r.json());
+      const root = document.documentElement;
+      root.style.setProperty('--primary', b.primary_color || '#6c5ce7');
+      root.style.setProperty('--secondary', b.secondary_color || '#2d3436');
+      root.style.setProperty('--accent', b.accent_color || '#00cec9');
+      if (b.site_name) {
+        document.querySelectorAll('.sidebar-brand span').forEach(el => el.textContent = b.site_name);
+        document.title = b.site_name;
+      }
+      if (b.logo_url) {
+        document.querySelectorAll('.sidebar-brand .logo').forEach(el => {
+          el.innerHTML = '<img src="' + b.logo_url + '" style="width:32px;height:32px;border-radius:8px;">';
+        });
+      }
+      if (b.favicon_url) {
+        let link = document.querySelector("link[rel~='icon']") || document.createElement('link');
+        link.rel = 'icon';
+        link.href = b.favicon_url;
+        document.head.appendChild(link);
+      }
+      if (b.custom_css) {
+        const style = document.createElement('style');
+        style.textContent = b.custom_css;
+        document.head.appendChild(style);
+      }
+      if (b.footer_text) {
+        document.querySelectorAll('.sidebar-footer').forEach(el => el.textContent = b.footer_text);
+      }
+    } catch {}
+  })();
 </script>
 {% block scripts %}{% endblock %}
 </body>

@@ -43,13 +43,13 @@ _auth_mod.PUBLIC_PREFIXES = _orig_prefixes + ("/api/r/", "/r/", "/api/mini/")
 # ---------------------------------------------------------------------------
 
 from src.models import async_session
-from src.models.database import User as DBUser, Analytics, Alert, Connection
+from src.models.database import User as DBUser, Analytics, Alert, Connection, BrandingSettings
 from src.core.marzban_client import marzban_client
 from src.core.device_tracker import device_tracker
 from src.core.geoip import get_geo
 from src.core import server_manager
 from sqlalchemy import select, func, desc, distinct, delete
-from src.models.database import UserIP, PromoCode, TariffPlan, Reseller, ResellerTransaction, ResellerUser, AutoRenewal, Server
+from src.models.database import UserIP, PromoCode, TariffPlan, Reseller, ResellerTransaction, ResellerUser, AutoRenewal, Server, BrandingSettings as BSModel
 
 # ---------------------------------------------------------------------------
 # WebSocket manager
@@ -2048,6 +2048,112 @@ async def on_startup():
 # ---------------------------------------------------------------------------
 # API routes — Servers
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# API routes — Branding (White-Label)
+# ---------------------------------------------------------------------------
+
+DEFAULT_BRANDING = {
+    "site_name": "Nemo Tracker",
+    "logo_url": None,
+    "favicon_url": None,
+    "primary_color": "#6c5ce7",
+    "secondary_color": "#2d3436",
+    "accent_color": "#00cec9",
+    "dark_mode_default": True,
+    "company_name": None,
+    "company_url": None,
+    "support_email": None,
+    "telegram_url": None,
+    "custom_css": None,
+    "custom_js": None,
+    "footer_text": None,
+    "meta_description": None,
+    "og_image_url": None,
+}
+
+@web_app.get("/branding", response_class=HTMLResponse)
+async def page_branding(request: Request):
+    return templates.TemplateResponse(request, "branding.html")
+
+@web_app.get("/api/branding")
+async def api_get_branding():
+    async with async_session() as session:
+        bs = (await session.execute(select(BSModel))).scalar_one_or_none()
+        if not bs:
+            return {**DEFAULT_BRANDING, "id": None}
+        return {
+            "id": bs.id,
+            "site_name": bs.site_name,
+            "logo_url": bs.logo_url,
+            "favicon_url": bs.favicon_url,
+            "primary_color": bs.primary_color,
+            "secondary_color": bs.secondary_color,
+            "accent_color": bs.accent_color,
+            "dark_mode_default": bs.dark_mode_default,
+            "company_name": bs.company_name,
+            "company_url": bs.company_url,
+            "support_email": bs.support_email,
+            "telegram_url": bs.telegram_url,
+            "custom_css": bs.custom_css,
+            "custom_js": bs.custom_js,
+            "footer_text": bs.footer_text,
+            "meta_description": bs.meta_description,
+            "og_image_url": bs.og_image_url,
+            "updated_at": bs.updated_at.isoformat() if bs.updated_at else None,
+        }
+
+@web_app.put("/api/branding")
+async def api_update_branding(request: Request):
+    data = await request.json()
+    async with async_session() as session:
+        bs = (await session.execute(select(BSModel))).scalar_one_or_none()
+        if not bs:
+            bs = BSModel()
+            session.add(bs)
+        for field in ["site_name", "logo_url", "favicon_url", "primary_color", "secondary_color",
+                      "accent_color", "company_name", "company_url", "support_email", "telegram_url",
+                      "custom_css", "custom_js", "footer_text", "meta_description", "og_image_url"]:
+            if field in data:
+                setattr(bs, field, data[field] if data[field] != "" else None)
+        if "dark_mode_default" in data:
+            bs.dark_mode_default = bool(data["dark_mode_default"])
+        await session.commit()
+        return {"ok": True}
+
+@web_app.post("/api/branding/logo")
+async def api_upload_branding_logo(request: Request):
+    from fastapi import UploadFile, File as FastFile
+    form = await request.form()
+    file = form.get("file")
+    if not file:
+        raise HTTPException(400, "No file uploaded")
+    upload_dir = WEB_DIR / "static" / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    logo_path = upload_dir / "logo.png"
+    content = await file.read()
+    logo_path.write_bytes(content)
+    logo_url = "/static/uploads/logo.png"
+    async with async_session() as session:
+        bs = (await session.execute(select(BSModel))).scalar_one_or_none()
+        if not bs:
+            bs = BSModel(logo_url=logo_url)
+            session.add(bs)
+        else:
+            bs.logo_url = logo_url
+        await session.commit()
+    return {"ok": True, "logo_url": logo_url}
+
+@web_app.post("/api/branding/reset")
+async def api_reset_branding():
+    async with async_session() as session:
+        bs = (await session.execute(select(BSModel))).scalar_one_or_none()
+        if bs:
+            for k, v in DEFAULT_BRANDING.items():
+                setattr(bs, k, v)
+            await session.commit()
+        return {"ok": True}
+
 
 @web_app.get("/api/servers")
 async def api_servers_list():

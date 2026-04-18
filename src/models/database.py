@@ -242,6 +242,30 @@ class Server(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class BrandingSettings(Base):
+    """White-label branding settings."""
+    __tablename__ = "branding_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_name: Mapped[str] = mapped_column(String(128), default="Nemo Tracker")
+    logo_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    favicon_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    primary_color: Mapped[str] = mapped_column(String(7), default="#6c5ce7")
+    secondary_color: Mapped[str] = mapped_column(String(7), default="#2d3436")
+    accent_color: Mapped[str] = mapped_column(String(7), default="#00cec9")
+    dark_mode_default: Mapped[bool] = mapped_column(Boolean, default=True)
+    company_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    company_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    support_email: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    telegram_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    custom_css: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    custom_js: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    footer_text: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    meta_description: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    og_image_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class Alert(Base):
     """Уведомления и предупреждения."""
     __tablename__ = "alerts"

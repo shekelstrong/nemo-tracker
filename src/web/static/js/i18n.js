@@ -282,7 +282,7 @@ const T = {
   "footer.version": { en: "Nemo Tracker v0.1 · Open Source", ru: "Nemo Tracker v0.1 · Open Source" },
 
   // Auto-Renewal
-  "nav.auto_renewal": { en: "🔄 Auto-Renewal", ru: "🔄 Автопродление" },
+  "nav.branding": { en: "🎨 Branding", ru: "🎨 Брендинг" },
   "ar.title": { en: "Auto-Renewal", ru: "Автопродление" },
   "ar.stat_total": { en: "Total", ru: "Всего" },
   "ar.stat_active": { en: "Active", ru: "Активных" },
@@ -403,6 +403,31 @@ const T = {
   "fc.no_churn": { en: "No churn risk detected", ru: "Риск оттока не обнаружен" },
   "fc.resource_title": { en: "💾 Resource Forecast", ru: "💾 Прогноз ресурсов" },
   "fc.revenue_title": { en: "💰 Revenue Forecast", ru: "💰 Прогноз дохода" },
+
+  // Branding
+  "brand.title": { en: "🎨 Branding / White-Label", ru: "🎨 Брендинг / White-Label" },
+  "brand.logo": { en: "Logo", ru: "Логотип" },
+  "brand.upload": { en: "Upload", ru: "Загрузить" },
+  "brand.logo_url_ph": { en: "Or paste logo URL...", ru: "Или вставьте URL логотипа..." },
+  "brand.colors": { en: "Colors", ru: "Цвета" },
+  "brand.company_info": { en: "Company Info", ru: "Информация о компании" },
+  "brand.site_name_ph": { en: "Site Name", ru: "Название сайта" },
+  "brand.company_name_ph": { en: "Company Name", ru: "Название компании" },
+  "brand.appearance": { en: "Appearance", ru: "Внешний вид" },
+  "brand.dark_default": { en: "Dark mode by default", ru: "Тёмная тема по умолчанию" },
+  "brand.custom_css": { en: "Custom CSS", ru: "Пользовательский CSS" },
+  "brand.footer_text": { en: "Footer Text", ru: "Текст подвала" },
+  "brand.seo": { en: "SEO", ru: "SEO" },
+  "brand.save": { en: "💾 Save", ru: "💾 Сохранить" },
+  "brand.reset": { en: "🔄 Reset", ru: "🔄 Сбросить" },
+  "brand.export_css": { en: "📋 Export CSS", ru: "📋 Экспорт CSS" },
+  "brand.preview": { en: "Preview", ru: "Предпросмотр" },
+  "brand.saved": { en: "Branding saved!", ru: "Брендинг сохранён!" },
+  "brand.err_save": { en: "Save error", ru: "Ошибка сохранения" },
+  "brand.confirm_reset": { en: "Reset branding to defaults?", ru: "Сбросить брендинг к настройкам по умолчанию?" },
+  "brand.reset_done": { en: "Branding reset!", ru: "Брендинг сброшен!" },
+  "brand.logo_uploaded": { en: "Logo uploaded!", ru: "Логотип загружен!" },
+  "brand.copied": { en: "CSS copied!", ru: "CSS скопирован!" },
 
   // Analytics
   "analytics.title": { en: "Traffic Analytics", ru: "Аналитика трафика" },

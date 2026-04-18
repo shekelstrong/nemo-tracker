@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+{% block title %}Branding — Nemo Tracker{% endblock %}
+{% set page = 'branding' %}
+{% block topbar_title %}nav.branding{% endblock %}
+
+{% block content %}
+<div style="display:flex;gap:24px;height:calc(100vh - 120px);">
+  <!-- Settings Panel -->
+  <div style="flex:1;overflow-y:auto;padding-right:12px;">
+    <div class="card" style="padding:24px;">
+      <h2 data-i18n="brand.title" style="margin:0 0 20px;">🎨 Branding / White-Label</h2>
+
+      <!-- Logo -->
+      <div class="form-group" style="margin-bottom:20px;">
+        <label data-i18n="brand.logo" style="font-weight:600;display:block;margin-bottom:6px;">Logo</label>
+        <div style="display:flex;gap:12px;align-items:center;">
+          <input type="file" id="logoFile" accept="image/*" style="flex:1;">
+          <button class="btn btn-secondary" onclick="uploadLogo()" data-i18n="brand.upload">Upload</button>
+        </div>
+        <div style="margin-top:6px;">
+          <input type="text" id="logo_url" class="form-control" data-i18n-placeholder="brand.logo_url_ph" placeholder="Or paste logo URL...">
+        </div>
+        <div id="logoPreview" style="margin-top:8px;"></div>
+      </div>
+
+      <!-- Colors -->
+      <div class="form-group" style="margin-bottom:20px;">
+        <label data-i18n="brand.colors" style="font-weight:600;display:block;margin-bottom:6px;">Colors</label>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;">
+          <div>
+            <label style="font-size:12px;">Primary</label><br>
+            <input type="color" id="primary_color" value="#6c5ce7" onchange="updatePreview()">
+          </div>
+          <div>
+            <label style="font-size:12px;">Secondary</label><br>
+            <input type="color" id="secondary_color" value="#2d3436" onchange="updatePreview()">
+          </div>
+          <div>
+            <label style="font-size:12px;">Accent</label><br>
+            <input type="color" id="accent_color" value="#00cec9" onchange="updatePreview()">
+          </div>
+        </div>
+      </div>
+
+      <!-- Company Info -->
+      <div class="form-group" style="margin-bottom:20px;">
+        <label data-i18n="brand.company_info" style="font-weight:600;display:block;margin-bottom:6px;">Company Info</label>
+        <input type="text" id="site_name" class="form-control" data-i18n-placeholder="brand.site_name_ph" placeholder="Site Name" style="margin-bottom:8px;">
+        <input type="text" id="company_name" class="form-control" data-i18n-placeholder="brand.company_name_ph" placeholder="Company Name" style="margin-bottom:8px;">
+        <input type="text" id="company_url" class="form-control" placeholder="https://example.com" style="margin-bottom:8px;">
+        <input type="email" id="support_email" class="form-control" placeholder="support@example.com" style="margin-bottom:8px;">
+        <input type="text" id="telegram_url" class="form-control" placeholder="https://t.me/..." style="margin-bottom:8px;">
+      </div>
+
+      <!-- Appearance -->
+      <div class="form-group" style="margin-bottom:20px;">
+        <label data-i18n="brand.appearance" style="font-weight:600;display:block;margin-bottom:6px;">Appearance</label>
+        <div style="margin-bottom:8px;">
+          <label>
+            <input type="checkbox" id="dark_mode_default" checked>
+            <span data-i18n="brand.dark_default">Dark mode by default</span>
+          </label>
+        </div>
+        <label data-i18n="brand.custom_css" style="font-size:12px;">Custom CSS</label>
+        <textarea id="custom_css" class="form-control" rows="6" placeholder=":root { --primary: #6c5ce7; }"></textarea>
+      </div>
+
+      <!-- Footer -->
+      <div class="form-group" style="margin-bottom:20px;">
+        <label data-i18n="brand.footer_text" style="font-weight:600;display:block;margin-bottom:6px;">Footer Text</label>
+        <textarea id="footer_text" class="form-control" rows="2" placeholder="Nemo Tracker v0.1 · Open Source"></textarea>
+      </div>
+
+      <!-- SEO -->
+      <div class="form-group" style="margin-bottom:20px;">
+        <label data-i18n="brand.seo" style="font-weight:600;display:block;margin-bottom:6px;">SEO</label>
+        <textarea id="meta_description" class="form-control" rows="2" placeholder="Meta description..."></textarea>
+        <input type="text" id="og_image_url" class="form-control" placeholder="OG Image URL" style="margin-top:8px;">
+      </div>
+
+      <!-- Buttons -->
+      <div style="display:flex;gap:12px;">
+        <button class="btn btn-primary" onclick="saveBranding()" data-i18n="brand.save">💾 Save</button>
+        <button class="btn btn-secondary" onclick="resetBranding()" data-i18n="brand.reset">🔄 Reset</button>
+        <button class="btn btn-secondary" onclick="exportCSS()" data-i18n="brand.export_css">📋 Export CSS</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live Preview -->
+  <div style="width:380px;flex-shrink:0;">
+    <div class="card" style="padding:16px;position:sticky;top:0;">
+      <h3 data-i18n="brand.preview" style="margin:0 0 12px;">Preview</h3>
+      <div id="previewPanel" style="border-radius:12px;overflow:hidden;background:#1a1a2e;padding:16px;min-height:400px;">
+        <!-- Preview Sidebar -->
+        <div style="background:var(--preview-secondary,#2d3436);border-radius:8px;padding:12px;margin-bottom:12px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+            <div id="previewLogo" style="width:32px;height:32px;border-radius:8px;background:var(--preview-primary,#6c5ce7);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;">N</div>
+            <span id="previewSiteName" style="color:#fff;font-weight:600;">Nemo Tracker</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <div style="background:var(--preview-primary,#6c5ce7);border-radius:6px;padding:8px 12px;color:#fff;font-size:13px;">Dashboard</div>
+            <div style="padding:8px 12px;color:#999;font-size:13px;">Users</div>
+            <div style="padding:8px 12px;color:#999;font-size:13px;">Settings</div>
+          </div>
+        </div>
+        <!-- Preview Card -->
+        <div style="background:#16213e;border-radius:8px;padding:16px;">
+          <div style="display:flex;gap:8px;margin-bottom:12px;">
+            <div style="flex:1;background:var(--preview-accent,#00cec9);border-radius:6px;padding:12px;text-align:center;color:#fff;font-size:12px;">
+              <div style="font-size:20px;font-weight:bold;">142</div>
+              <div>Users</div>
+            </div>
+            <div style="flex:1;background:var(--preview-primary,#6c5ce7);border-radius:6px;padding:12px;text-align:center;color:#fff;font-size:12px;">
+              <div style="font-size:20px;font-weight:bold;">87</div>
+              <div>Active</div>
+            </div>
+          </div>
+          <button style="background:var(--preview-primary,#6c5ce7);color:#fff;border:none;border-radius:6px;padding:8px 16px;width:100%;cursor:pointer;">Button</button>
+        </div>
+        <!-- Preview Footer -->
+        <div id="previewFooter" style="margin-top:12px;color:#666;font-size:11px;text-align:center;">Nemo Tracker v0.1</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .form-control { width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border, #333); background: var(--input-bg, #1a1a2e); color: var(--text, #eee); box-sizing: border-box; }
+  input[type="color"] { width: 60px; height: 40px; border: none; border-radius: 8px; cursor: pointer; background: none; }
+  .btn { padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; }
+  .btn-primary { background: var(--primary, #6c5ce7); color: #fff; }
+  .btn-secondary { background: var(--card-bg, #1e1e2e); color: var(--text, #eee); border: 1px solid var(--border, #333); }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let brandingData = {};
+
+async function loadBranding() {
+  try {
+    brandingData = await fetch('/api/branding').then(r => r.json());
+    const fields = ['site_name','logo_url','favicon_url','primary_color','secondary_color','accent_color',
+      'company_name','company_url','support_email','telegram_url','custom_css','custom_js',
+      'footer_text','meta_description','og_image_url'];
+    fields.forEach(f => {
+      const el = document.getElementById(f);
+      if (el && brandingData[f]) {
+        if (el.type === 'checkbox') el.checked = brandingData[f];
+        else el.value = brandingData[f];
+      }
+    });
+    if (brandingData.dark_mode_default === false) document.getElementById('dark_mode_default').checked = false;
+    updatePreview();
+  } catch {}
+}
+
+function updatePreview() {
+  const panel = document.getElementById('previewPanel');
+  const primary = document.getElementById('primary_color').value;
+  const secondary = document.getElementById('secondary_color').value;
+  const accent = document.getElementById('accent_color').value;
+  panel.style.setProperty('--preview-primary', primary);
+  panel.style.setProperty('--preview-secondary', secondary);
+  panel.style.setProperty('--preview-accent', accent);
+  panel.querySelectorAll('[style*="--preview-primary"]').forEach(el => {});
+  document.getElementById('previewSiteName').textContent = document.getElementById('site_name').value || 'Nemo Tracker';
+  document.getElementById('previewFooter').textContent = document.getElementById('footer_text').value || 'Nemo Tracker v0.1';
+  const logoUrl = document.getElementById('logo_url').value || brandingData.logo_url;
+  const logoEl = document.getElementById('previewLogo');
+  if (logoUrl) {
+    logoEl.innerHTML = '<img src="'+logoUrl+'" style="width:32px;height:32px;border-radius:8px;">';
+  } else {
+    const letter = (document.getElementById('site_name').value || 'N')[0].toUpperCase();
+    logoEl.innerHTML = letter;
+    logoEl.style.background = primary;
+  }
+  // Update logo preview
+  const lp = document.getElementById('logoPreview');
+  if (logoUrl) lp.innerHTML = '<img src="'+logoUrl+'" style="max-height:48px;border-radius:8px;">';
+  else lp.innerHTML = '';
+}
+
+async function uploadLogo() {
+  const file = document.getElementById('logoFile').files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch('/api/branding/logo', {method:'POST', body:fd}).then(r=>r.json());
+    if (res.ok) {
+      document.getElementById('logo_url').value = res.logo_url;
+      brandingData.logo_url = res.logo_url;
+      updatePreview();
+      showToast(t('brand.logo_uploaded'));
+    }
+  } catch {}
+}
+
+async function saveBranding() {
+  const data = {
+    site_name: document.getElementById('site_name').value,
+    logo_url: document.getElementById('logo_url').value || null,
+    favicon_url: document.getElementById('favicon_url').value || null,
+    primary_color: document.getElementById('primary_color').value,
+    secondary_color: document.getElementById('secondary_color').value,
+    accent_color: document.getElementById('accent_color').value,
+    dark_mode_default: document.getElementById('dark_mode_default').checked,
+    company_name: document.getElementById('company_name').value || null,
+    company_url: document.getElementById('company_url').value || null,
+    support_email: document.getElementById('support_email').value || null,
+    telegram_url: document.getElementById('telegram_url').value || null,
+    custom_css: document.getElementById('custom_css').value || null,
+    custom_js: null,
+    footer_text: document.getElementById('footer_text').value || null,
+    meta_description: document.getElementById('meta_description').value || null,
+    og_image_url: document.getElementById('og_image_url').value || null,
+  };
+  try {
+    await fetch('/api/branding', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)});
+    showToast(t('brand.saved'));
+  } catch { showToast(t('brand.err_save')); }
+}
+
+async function resetBranding() {
+  if (!confirm(t('brand.confirm_reset'))) return;
+  await fetch('/api/branding/reset', {method:'POST'});
+  loadBranding();
+  showToast(t('brand.reset_done'));
+}
+
+function exportCSS() {
+  const css = `:root {
+  --primary: ${document.getElementById('primary_color').value};
+  --secondary: ${document.getElementById('secondary_color').value};
+  --accent: ${document.getElementById('accent_color').value};
+}
+${document.getElementById('custom_css').value || ''}`;
+  navigator.clipboard.writeText(css).then(() => showToast(t('brand.copied')));
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast show';
+  setTimeout(() => t.className = 'toast', 2500);
+}
+
+// Listen for input changes to update preview live
+['site_name','logo_url','footer_text'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', updatePreview);
+});
+
+document.addEventListener('DOMContentLoaded', loadBranding);
+</script>
+{% endblock %}
