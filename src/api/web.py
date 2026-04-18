@@ -154,6 +154,10 @@ async def page_alerts(request: Request):
 async def page_finance(request: Request):
     return templates.TemplateResponse(request, "finance.html")
 
+@web_app.get("/export", response_class=HTMLResponse)
+async def page_export(request: Request):
+    return templates.TemplateResponse(request, "export.html")
+
 @web_app.get("/geo", response_class=HTMLResponse)
 async def page_geo(request: Request):
     return templates.TemplateResponse(request, "geo.html")
@@ -966,6 +970,140 @@ async def api_geo_map():
                     "last_seen": ip.last_seen.isoformat() if ip.last_seen else None,
                 })
         return markers
+
+
+# ---------------------------------------------------------------------------
+# API routes — Export/Import
+# ---------------------------------------------------------------------------
+
+import io
+import csv
+
+@web_app.get("/api/export/full")
+async def api_export_full():
+    """Export all data as JSON backup."""
+    async with async_session() as session:
+        users_rows = (await session.execute(select(DBUser))).scalars().all()
+        users = []
+        for u in users_rows:
+            users.append({
+                "username": u.username,
+                "status": u.status,
+                "used_traffic": u.used_traffic,
+                "data_limit": u.data_limit,
+                "device_count": u.device_count,
+                "tier": u.tier,
+                "online_at": u.online_at.isoformat() if u.online_at else None,
+                "expire": u.expire.isoformat() if u.expire else None,
+                "created_at": u.created_at.isoformat() if u.created_at else None,
+                "was_online": u.was_online,
+            })
+
+        # Device limits from tracker
+        device_limits = dict(device_tracker._device_limits)
+
+        # Transactions
+        from src.models.database import Transaction
+        tx_rows = (await session.execute(select(Transaction))).scalars().all()
+        transactions = [{
+            "username": tx.username,
+            "amount": tx.amount,
+            "currency": tx.currency,
+            "payment_method": tx.payment_method,
+            "status": tx.status,
+            "description": tx.description,
+            "created_at": tx.created_at.isoformat() if tx.created_at else None,
+        } for tx in tx_rows]
+
+    settings = load_settings()
+
+    return {
+        "version": 1,
+        "exported_at": datetime.utcnow().isoformat(),
+        "users": users,
+        "settings": settings,
+        "device_limits": device_limits,
+        "transactions": transactions,
+    }
+
+
+@web_app.post("/api/export/full")
+async def api_import_full(request: Request):
+    """Import data from JSON backup (merge mode)."""
+    data = await request.json()
+    if data.get("version") != 1:
+        raise HTTPException(400, "Unsupported backup version")
+
+    imported = 0
+    async with async_session() as session:
+        for u_data in data.get("users", []):
+            username = u_data.get("username")
+            if not username:
+                continue
+            existing = (await session.execute(
+                select(DBUser).where(DBUser.username == username)
+            )).scalar_one_or_none()
+
+            if existing:
+                # Update existing
+                for field in ["status", "used_traffic", "data_limit", "device_count", "tier", "was_online"]:
+                    if field in u_data and u_data[field] is not None:
+                        setattr(existing, field, u_data[field])
+                if u_data.get("expire"):
+                    existing.expire = datetime.fromisoformat(u_data["expire"])
+            else:
+                new_user = DBUser(username=username)
+                for field in ["status", "used_traffic", "data_limit", "device_count", "tier", "was_online"]:
+                    if field in u_data:
+                        setattr(new_user, field, u_data[field])
+                if u_data.get("expire"):
+                    new_user.expire = datetime.fromisoformat(u_data["expire"])
+                session.add(new_user)
+            imported += 1
+        await session.commit()
+
+    # Restore settings
+    settings_restored = False
+    if data.get("settings"):
+        save_settings(data["settings"])
+        settings_restored = True
+
+    # Restore device limits
+    if data.get("device_limits"):
+        for username, limit in data["device_limits"].items():
+            await device_tracker.set_device_limit(username, int(limit))
+
+    return {"imported": imported, "settings_restored": settings_restored}
+
+
+@web_app.get("/api/export/users")
+async def api_export_users_csv():
+    """Export users as CSV."""
+    async with async_session() as session:
+        rows = (await session.execute(select(DBUser))).scalars().all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["username", "status", "used_traffic_gb", "data_limit_gb",
+                      "device_count", "tier", "expire", "created_at"])
+    for u in rows:
+        writer.writerow([
+            u.username,
+            u.status or "",
+            round((u.used_traffic or 0) / 1024**3, 2),
+            round((u.data_limit or 0) / 1024**3, 2) if u.data_limit else "",
+            u.device_count or 0,
+            u.tier or 0,
+            u.expire.isoformat() if u.expire else "",
+            u.created_at.isoformat() if u.created_at else "",
+        ])
+
+    from starlette.responses import Response
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=nemo-users.csv"},
+    )
 
 
 # ---------------------------------------------------------------------------

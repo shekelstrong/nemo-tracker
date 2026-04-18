@@ -1,0 +1,338 @@
+{% extends "base.html" %}
+
+{% block title %}Export — Nemo Tracker{% endblock %}
+{% set page = 'export' %}
+
+{% block topbar_title %}exp.title{% endblock %}
+
+{% block content %}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start" class="export-grid">
+
+  <!-- Export Section -->
+  <div class="card export-section">
+    <h3><i class="fas fa-download" style="margin-right:8px;color:#22c55e"></i><span data-i18n="exp.export_title">Export</span></h3>
+    <p class="exp-desc" data-i18n="exp.export_desc">Download backup of your configuration and data.</p>
+
+    <div class="export-buttons">
+      <button class="btn-gradient" onclick="downloadFull()">
+        <i class="fas fa-file-code"></i> <span data-i18n="exp.full_backup">Full Backup (JSON)</span>
+      </button>
+      <button class="btn-gradient btn-gradient-outline" onclick="downloadUsersCSV()">
+        <i class="fas fa-file-csv"></i> <span data-i18n="exp.users_csv">Users CSV</span>
+      </button>
+    </div>
+
+    <!-- Backup History -->
+    <div style="margin-top:1.5rem">
+      <h4 data-i18n="exp.history">Backup History</h4>
+      <div id="backupHistory" class="backup-list">
+        <div class="exp-empty" data-i18n="exp.no_history">No backups yet</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Import Section -->
+  <div class="card export-section">
+    <h3><i class="fas fa-upload" style="margin-right:8px;color:#3b82f6"></i><span data-i18n="exp.import_title">Import</span></h3>
+    <p class="exp-desc" data-i18n="exp.import_desc">Restore configuration from a backup file. Existing users will be updated, not deleted.</p>
+
+    <div class="dropzone" id="dropzone">
+      <input type="file" id="fileInput" accept=".json" hidden>
+      <div class="dropzone-content">
+        <i class="fas fa-cloud-upload-alt dropzone-icon"></i>
+        <p data-i18n="exp.drop_text">Drag & drop JSON file here or click to browse</p>
+        <span class="dropzone-hint" data-i18n="exp.drop_hint">Only .json backup files</span>
+      </div>
+    </div>
+
+    <!-- Preview -->
+    <div id="importPreview" class="import-preview" style="display:none">
+      <h4 data-i18n="exp.preview">Preview</h4>
+      <div class="preview-stats" id="previewStats"></div>
+      <div class="import-actions">
+        <button class="btn-gradient btn-gradient-blue" id="confirmImportBtn" onclick="confirmImport()">
+          <i class="fas fa-check"></i> <span data-i18n="exp.confirm_import">Confirm Import</span>
+        </button>
+        <button class="btn-gradient btn-gradient-outline" onclick="cancelImport()">
+          <i class="fas fa-times"></i> <span data-i18n="exp.cancel">Cancel</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Import Result -->
+    <div id="importResult" style="display:none;margin-top:1rem"></div>
+  </div>
+</div>
+
+<style>
+.export-grid { margin-top: 0.5rem; }
+.export-section { min-height: 400px; }
+.exp-desc { color: var(--text-secondary, #94a3b8); margin: 0.5rem 0 1rem; font-size: 0.9rem; }
+
+.export-buttons { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.btn-gradient {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px 24px; border: none; border-radius: 12px; cursor: pointer;
+  font-size: 0.95rem; font-weight: 600;
+  background: linear-gradient(135deg, #22c55e, #10b981);
+  color: #fff; transition: all 0.2s;
+  box-shadow: 0 4px 15px rgba(34,197,94,0.3);
+}
+.btn-gradient:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(34,197,94,0.4); }
+.btn-gradient-outline {
+  background: transparent; color: #22c55e;
+  border: 2px solid rgba(34,197,94,0.4);
+  box-shadow: none;
+}
+.btn-gradient-outline:hover { background: rgba(34,197,94,0.1); box-shadow: none; }
+.btn-gradient-blue {
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  box-shadow: 0 4px 15px rgba(59,130,246,0.3);
+}
+.btn-gradient-blue:hover { box-shadow: 0 6px 20px rgba(59,130,246,0.4); }
+
+/* Dropzone */
+.dropzone {
+  border: 2px dashed var(--border, rgba(148,163,184,0.3));
+  border-radius: 16px; padding: 2.5rem 1.5rem;
+  text-align: center; cursor: pointer;
+  transition: all 0.3s;
+  background: rgba(148,163,184,0.03);
+}
+.dropzone:hover, .dropzone.dragover {
+  border-color: #3b82f6;
+  background: rgba(59,130,246,0.08);
+  box-shadow: 0 0 20px rgba(59,130,246,0.1);
+}
+.dropzone-icon { font-size: 2.5rem; color: #3b82f6; margin-bottom: 0.75rem; }
+.dropzone-content p { margin: 0.5rem 0 0.25rem; color: var(--text); }
+.dropzone-hint { font-size: 0.8rem; color: var(--text-secondary, #94a3b8); }
+
+/* Preview */
+.import-preview {
+  margin-top: 1.5rem; padding: 1rem;
+  background: rgba(59,130,246,0.08);
+  border: 1px solid rgba(59,130,246,0.2);
+  border-radius: 12px;
+}
+.preview-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.75rem; margin: 1rem 0; }
+.preview-stat {
+  text-align: center; padding: 0.75rem;
+  background: var(--card, rgba(255,255,255,0.05));
+  border-radius: 10px; border: 1px solid var(--border, rgba(148,163,184,0.15));
+}
+.preview-stat-value { font-size: 1.5rem; font-weight: 700; color: #3b82f6; }
+.preview-stat-label { font-size: 0.75rem; color: var(--text-secondary, #94a3b8); margin-top: 0.25rem; }
+
+.import-actions { display: flex; gap: 0.75rem; margin-top: 1rem; }
+
+/* Backup list */
+.backup-list { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.75rem; }
+.backup-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.75rem 1rem; background: var(--card, rgba(255,255,255,0.05));
+  border: 1px solid var(--border, rgba(148,163,184,0.15));
+  border-radius: 10px;
+}
+.backup-item-info { display: flex; flex-direction: column; }
+.backup-item-date { font-size: 0.85rem; font-weight: 600; }
+.backup-item-size { font-size: 0.75rem; color: var(--text-secondary, #94a3b8); }
+.backup-item-dl { background: none; border: none; color: #22c55e; cursor: pointer; font-size: 1.1rem; }
+.backup-item-dl:hover { color: #10b981; }
+.exp-empty { color: var(--text-secondary, #94a3b8); font-size: 0.85rem; padding: 0.5rem 0; }
+
+/* Result */
+.import-result {
+  padding: 1rem; border-radius: 12px; margin-top: 1rem;
+}
+.import-result.success { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); }
+.import-result.error { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); }
+
+@media (max-width: 768px) {
+  .export-grid { grid-template-columns: 1fr !important; }
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const BACKUP_KEY = 'nemo_backups';
+let pendingImportData = null;
+
+function getBackupHistory() {
+  try { return JSON.parse(localStorage.getItem(BACKUP_KEY) || '[]'); } catch { return []; }
+}
+function saveBackupRecord(record) {
+  const history = getBackupHistory();
+  history.unshift(record);
+  if (history.length > 20) history.pop();
+  localStorage.setItem(BACKUP_KEY, JSON.stringify(history));
+}
+function renderHistory() {
+  const el = document.getElementById('backupHistory');
+  const history = getBackupHistory();
+  if (!history.length) {
+    el.innerHTML = `<div class="exp-empty" data-i18n="exp.no_history">${t('exp.no_history')}</div>`;
+    return;
+  }
+  el.innerHTML = history.map((h, i) => `
+    <div class="backup-item">
+      <div class="backup-item-info">
+        <span class="backup-item-date">${new Date(h.date).toLocaleString()}</span>
+        <span class="backup-item-size">${h.size} · ${h.type}</span>
+      </div>
+    </div>
+  `).join('');
+}
+renderHistory();
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+async function downloadFull() {
+  try {
+    const resp = await fetch('/api/export/full');
+    const data = await resp.json();
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const now = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
+    downloadBlob(blob, `nemo-backup-${now}.json`);
+    saveBackupRecord({ date: new Date().toISOString(), size: formatSize(json.length), type: 'JSON Full' });
+    renderHistory();
+    showToast(t('exp.export_success'));
+  } catch (e) {
+    showToast(t('exp.export_error') + ': ' + e.message);
+  }
+}
+
+async function downloadUsersCSV() {
+  try {
+    const resp = await fetch('/api/export/users');
+    const text = await resp.text();
+    const blob = new Blob([text], { type: 'text/csv' });
+    const now = new Date().toISOString().slice(0, 10);
+    downloadBlob(blob, `nemo-users-${now}.csv`);
+    saveBackupRecord({ date: new Date().toISOString(), size: formatSize(text.length), type: 'CSV Users' });
+    renderHistory();
+    showToast(t('exp.export_success'));
+  } catch (e) {
+    showToast(t('exp.export_error') + ': ' + e.message);
+  }
+}
+
+// Dropzone
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault(); dropzone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
+
+async function handleFile(file) {
+  if (!file.name.endsWith('.json')) {
+    showToast(t('exp.only_json'));
+    return;
+  }
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!data.version || !data.users) {
+      showToast(t('exp.invalid_format'));
+      return;
+    }
+
+    // Count new vs updated
+    const existingResp = await fetch('/api/users');
+    const existing = await existingResp.json();
+    const existingNames = new Set(existing.map(u => u.username));
+    const newCount = data.users.filter(u => !existingNames.has(u.username)).length;
+    const updateCount = data.users.length - newCount;
+
+    pendingImportData = data;
+    const statsEl = document.getElementById('previewStats');
+    statsEl.innerHTML = `
+      <div class="preview-stat">
+        <div class="preview-stat-value">${data.users.length}</div>
+        <div class="preview-stat-label">${t('exp.total_users')}</div>
+      </div>
+      <div class="preview-stat">
+        <div class="preview-stat-value" style="color:#22c55e">${newCount}</div>
+        <div class="preview-stat-label">${t('exp.new_users')}</div>
+      </div>
+      <div class="preview-stat">
+        <div class="preview-stat-value" style="color:#f59e0b">${updateCount}</div>
+        <div class="preview-stat-label">${t('exp.updated_users')}</div>
+      </div>
+      <div class="preview-stat">
+        <div class="preview-stat-value">${data.settings ? Object.keys(data.settings).length : 0}</div>
+        <div class="preview-stat-label">${t('exp.settings')}</div>
+      </div>
+    `;
+    document.getElementById('importPreview').style.display = 'block';
+    document.getElementById('importResult').style.display = 'none';
+  } catch (e) {
+    showToast(t('exp.invalid_format') + ': ' + e.message);
+  }
+}
+
+async function confirmImport() {
+  if (!pendingImportData) return;
+  const btn = document.getElementById('confirmImportBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ...';
+  try {
+    const resp = await fetch('/api/export/full', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pendingImportData),
+    });
+    const result = await resp.json();
+    const resEl = document.getElementById('importResult');
+    if (resp.ok) {
+      resEl.className = 'import-result success';
+      resEl.innerHTML = `<i class="fas fa-check-circle" style="color:#22c55e;margin-right:8px"></i>${t('exp.import_success')}<br><small>${t('exp.users_imported')}: ${result.imported || 0}, ${t('exp.settings_restored')}: ${result.settings_restored ? '✓' : '✗'}</small>`;
+    } else {
+      resEl.className = 'import-result error';
+      resEl.innerHTML = `<i class="fas fa-exclamation-circle" style="color:#ef4444;margin-right:8px"></i>${t('exp.import_error')}: ${result.detail || 'Unknown error'}`;
+    }
+    resEl.style.display = 'block';
+    document.getElementById('importPreview').style.display = 'none';
+    pendingImportData = null;
+  } catch (e) {
+    showToast(t('exp.import_error') + ': ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<i class="fas fa-check"></i> <span data-i18n="exp.confirm_import">${t('exp.confirm_import')}</span>`;
+  }
+}
+
+function cancelImport() {
+  pendingImportData = null;
+  document.getElementById('importPreview').style.display = 'none';
+  fileInput.value = '';
+}
+
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.className = 'toast show';
+  setTimeout(() => toast.className = 'toast', 3000);
+}
+</script>
+{% endblock %}
