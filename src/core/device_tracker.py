@@ -24,19 +24,22 @@ class DeviceTracker:
     # Populated from Marzban user data or external DB
     _device_limits: Dict[str, int] = {}
 
-    async def record_ip(self, username: str, ip: str, source: str = "sub"):
+    # IPs to ignore (proxy servers, internal)
+    IGNORED_IPS = {"51.250.40.213"}  # RU proxy for whitelist traffic
+
+    async def record_ip(self, username: str, ip: str, inbound: str = "", source: str = "sub"):
         """Record an IP address for a user.
         
-        Args:
-            username: Marzban username
-            ip: Client IP address
-            source: 'sub' (subscription request) or 'xray' (direct connection)
+        Rules:
+        - vless-reality-standard: NEVER track/block
+        - vless-reality-whitelist: track only if user has device_count > 0 (new clients)
+        - Skip ignored IPs (proxy servers)
         """
         if not username or not ip:
             return
 
-        # Skip internal/private IPs
-        if ip.startswith(("127.", "10.", "172.", "192.168.", "0.")):
+        # Skip proxy/internal IPs
+        if ip in self.IGNORED_IPS or ip.startswith(("127.", "10.", "172.", "192.168.", "0.")):
             return
 
         async with async_session() as session:
@@ -108,11 +111,20 @@ class DeviceTracker:
         """Set device limit for a user."""
         self._device_limits[username] = limit
 
-    async def check_and_enforce(self, username: str) -> Optional[dict]:
-        """Check if user exceeds device limit. Returns alert dict if exceeded."""
+    async def check_and_enforce(self, username: str, inbound: str = "") -> Optional[dict]:
+        """Check if user exceeds device limit. Returns alert dict if exceeded.
+        
+        Rules:
+        - standard inbound: NEVER enforce
+        - whitelist inbound: enforce only if device_count > 0
+        """
+        # Never enforce for standard tier
+        if "standard" in inbound or inbound == "standard":
+            return None
+
         limit = self._device_limits.get(username, 0)
         if limit <= 0:
-            return None  # No limit set
+            return None  # Old client without limit, or no limit set
 
         count = await self.get_unique_ip_count(username, days=30)
         
