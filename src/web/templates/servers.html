@@ -1,0 +1,340 @@
+{% extends "base.html" %}
+{% block title %}Servers — Nemo Tracker{% endblock %}
+{% block topbar_title %}nav.servers{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 data-i18n="srv.title">Servers</h1>
+  <button class="btn btn-primary" onclick="openAddModal()">
+    <i class="fas fa-plus"></i> <span data-i18n="srv.add_btn">Add Server</span>
+  </button>
+</div>
+
+<!-- Stats cards -->
+<div class="stats-grid" id="statsGrid">
+  <div class="stat-card">
+    <div class="stat-value" id="statTotal">0</div>
+    <div class="stat-label" data-i18n="srv.stat_total">Total Servers</div>
+  </div>
+  <div class="stat-card stat-success">
+    <div class="stat-value" id="statOnline">0</div>
+    <div class="stat-label" data-i18n="srv.stat_online">Online</div>
+  </div>
+  <div class="stat-card stat-danger">
+    <div class="stat-value" id="statOffline">0</div>
+    <div class="stat-label" data-i18n="srv.stat_offline">Offline</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" id="statUsers">0</div>
+    <div class="stat-label" data-i18n="srv.stat_users">Total Users</div>
+  </div>
+</div>
+
+<!-- Servers grid -->
+<div class="servers-grid" id="serversGrid">
+  <div class="empty-state" id="emptyState" style="display:none;">
+    <i class="fas fa-server" style="font-size:3rem;opacity:.3;"></i>
+    <p data-i18n="srv.no_servers">No servers added yet</p>
+  </div>
+</div>
+
+<!-- Add/Edit Modal -->
+<div class="modal-overlay" id="serverModal" style="display:none;">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle" data-i18n="srv.create_title">Add Server</h2>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editId" value="">
+      <div class="form-group">
+        <label data-i18n="srv.name">Name</label>
+        <input type="text" id="srvName" class="form-control" placeholder="My Server">
+      </div>
+      <div class="form-group">
+        <label data-i18n="srv.url">Marzban URL</label>
+        <input type="text" id="srvUrl" class="form-control" data-i18n-placeholder="srv.url_ph">
+      </div>
+      <div class="form-group">
+        <label data-i18n="srv.username">Username</label>
+        <input type="text" id="srvUser" class="form-control" placeholder="admin">
+      </div>
+      <div class="form-group">
+        <label data-i18n="srv.password">Password</label>
+        <input type="password" id="srvPass" class="form-control" placeholder="••••••••">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label data-i18n="srv.country">Country</label>
+          <input type="text" id="srvCountry" class="form-control" placeholder="🇳🇱 NL">
+        </div>
+        <div class="form-group">
+          <label data-i18n="srv.city">City</label>
+          <input type="text" id="srvCity" class="form-control" placeholder="Amsterdam">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label data-i18n="srv.ip_address">IP Address</label>
+          <input type="text" id="srvIp" class="form-control" placeholder="1.2.3.4">
+        </div>
+        <div class="form-group">
+          <label data-i18n="srv.max_users">Max Users</label>
+          <input type="number" id="srvMaxUsers" class="form-control" placeholder="100">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="srvMaster"> <span data-i18n="srv.is_master">Master server (default)</span>
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()" data-i18n="srv.cancel">Cancel</button>
+      <button class="btn btn-primary" onclick="saveServer()" id="saveBtn" data-i18n="srv.create">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- Stats Modal -->
+<div class="modal-overlay" id="statsModal" style="display:none;">
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-header">
+      <h2 data-i18n="srv.stats">Stats</h2>
+      <button class="modal-close" onclick="document.getElementById('statsModal').style.display='none'">&times;</button>
+    </div>
+    <div class="modal-body" id="statsBody">
+      <p data-i18n="analytics.loading">Loading...</p>
+    </div>
+  </div>
+</div>
+
+<style>
+.servers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.server-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  position: relative;
+  transition: box-shadow .2s;
+}
+.server-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,.15); }
+.server-card.master { border-color: var(--primary); }
+.server-card .master-badge {
+  position: absolute; top: .5rem; right: .75rem;
+  background: var(--primary); color: #fff; padding: 2px 10px;
+  border-radius: 20px; font-size: .75rem; font-weight: 600;
+}
+.server-card .server-header { display: flex; align-items: center; gap: .75rem; margin-bottom: 1rem; }
+.server-card .server-flag { font-size: 1.5rem; }
+.server-card .server-name { font-size: 1.1rem; font-weight: 600; }
+.server-card .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+.server-card .status-dot.online { background: #22c55e; }
+.server-card .status-dot.offline { background: #ef4444; }
+.server-card .server-info { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; font-size: .85rem; }
+.server-card .info-label { color: var(--text-secondary); }
+.server-card .info-value { font-weight: 500; }
+.server-card .server-actions { margin-top: 1rem; display: flex; gap: .5rem; flex-wrap: wrap; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.checkbox-label { display: flex; align-items: center; gap: .5rem; cursor: pointer; }
+</style>
+
+<script>
+function fmtBytes(b) {
+  if (!b) return '0 B';
+  for (const u of ['B','KB','MB','GB','TB']) {
+    if (b < 1024) return b.toFixed(1) + ' ' + u;
+    b /= 1024;
+  }
+  return b.toFixed(1) + ' PB';
+}
+
+async function loadServers() {
+  const resp = await fetch('/api/servers');
+  const servers = await resp.json();
+  const grid = document.getElementById('serversGrid');
+  const empty = document.getElementById('emptyState');
+
+  document.getElementById('statTotal').textContent = servers.length;
+  document.getElementById('statOnline').textContent = servers.filter(s => s.status === 'online').length;
+  document.getElementById('statOffline').textContent = servers.filter(s => s.status !== 'online').length;
+  document.getElementById('statUsers').textContent = servers.reduce((a, s) => a + (s.current_users || 0), 0);
+
+  if (!servers.length) {
+    grid.innerHTML = '';
+    grid.appendChild(empty);
+    empty.style.display = '';
+    return;
+  }
+
+  grid.innerHTML = servers.map(s => `
+    <div class="server-card ${s.is_master ? 'master' : ''}">
+      ${s.is_master ? '<span class="master-badge" data-i18n="srv.master">Master</span>' : ''}
+      <div class="server-header">
+        <span class="server-flag">${getFlag(s.country)}</span>
+        <div>
+          <div class="server-name">${esc(s.name)}</div>
+          <div><span class="status-dot ${s.status}"></span><span data-i18n="srv.${s.status}">${s.status}</span></div>
+        </div>
+      </div>
+      <div class="server-info">
+        <div><span class="info-label" data-i18n="srv.users">Users:</span> <span class="info-value">${s.current_users || 0}${s.max_users ? '/' + s.max_users : ''}</span></div>
+        <div><span class="info-label" data-i18n="srv.bandwidth">Bandwidth:</span> <span class="info-value">${fmtBytes(s.total_bandwidth)}</span></div>
+        <div><span class="info-label">URL:</span> <span class="info-value" style="font-size:.75rem;word-break:break-all;">${esc(s.marzban_url)}</span></div>
+        <div><span class="info-label" data-i18n="srv.last_check">Last check:</span> <span class="info-value">${s.last_check_at ? timeAgo(s.last_check_at) : '—'}</span></div>
+      </div>
+      <div class="server-actions">
+        <button class="btn btn-sm btn-secondary" onclick="doHealth(${s.id})"><i class="fas fa-heartbeat"></i> <span data-i18n="srv.health_check">Check</span></button>
+        <button class="btn btn-sm btn-secondary" onclick="showStats(${s.id})"><i class="fas fa-chart-bar"></i> <span data-i18n="srv.stats">Stats</span></button>
+        <button class="btn btn-sm btn-secondary" onclick="openEditModal(${s.id})"><i class="fas fa-edit"></i></button>
+        <button class="btn btn-sm btn-danger" onclick="deleteServer(${s.id})"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>
+  `).join('');
+  if (typeof setLang === 'function') setLang(getLang());
+}
+
+function getFlag(country) {
+  if (!country) return '🌐';
+  const code = country.trim().toUpperCase();
+  if (code.length === 2) {
+    return code.toUpperCase().replace(/./g, c => String.fromCodePoint(127397 + c.charCodeAt()));
+  }
+  // If emoji already
+  if (/[\u{1F1E6}-\u{1F1FF}]/u.test(country)) return country;
+  return country;
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function timeAgo(iso) {
+  const d = new Date(iso);
+  const diff = (Date.now() - d.getTime()) / 1000;
+  if (diff < 60) return Math.floor(diff) + 's ago';
+  if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+  return Math.floor(diff/86400) + 'd ago';
+}
+
+function openAddModal() {
+  document.getElementById('editId').value = '';
+  document.getElementById('srvName').value = '';
+  document.getElementById('srvUrl').value = '';
+  document.getElementById('srvUser').value = '';
+  document.getElementById('srvPass').value = '';
+  document.getElementById('srvCountry').value = '';
+  document.getElementById('srvCity').value = '';
+  document.getElementById('srvIp').value = '';
+  document.getElementById('srvMaxUsers').value = '';
+  document.getElementById('srvMaster').checked = false;
+  document.getElementById('modalTitle').textContent = t('srv.create_title');
+  document.getElementById('saveBtn').textContent = t('srv.create');
+  document.getElementById('serverModal').style.display = 'flex';
+}
+
+async function openEditModal(id) {
+  const resp = await fetch('/api/servers');
+  const servers = await resp.json();
+  const s = servers.find(x => x.id === id);
+  if (!s) return;
+  document.getElementById('editId').value = s.id;
+  document.getElementById('srvName').value = s.name;
+  document.getElementById('srvUrl').value = s.marzban_url;
+  document.getElementById('srvUser').value = s.marzban_username;
+  document.getElementById('srvPass').value = '';
+  document.getElementById('srvCountry').value = s.country || '';
+  document.getElementById('srvCity').value = s.city || '';
+  document.getElementById('srvIp').value = s.ip_address || '';
+  document.getElementById('srvMaxUsers').value = s.max_users || '';
+  document.getElementById('srvMaster').checked = s.is_master;
+  document.getElementById('modalTitle').textContent = t('srv.edit_title');
+  document.getElementById('saveBtn').textContent = t('srv.save');
+  document.getElementById('serverModal').style.display = 'flex';
+}
+
+function closeModal() { document.getElementById('serverModal').style.display = 'none'; }
+
+async function saveServer() {
+  const id = document.getElementById('editId').value;
+  const payload = {
+    name: document.getElementById('srvName').value.trim(),
+    marzban_url: document.getElementById('srvUrl').value.trim(),
+    marzban_username: document.getElementById('srvUser').value.trim(),
+    country: document.getElementById('srvCountry').value.trim() || null,
+    city: document.getElementById('srvCity').value.trim() || null,
+    ip_address: document.getElementById('srvIp').value.trim() || null,
+    max_users: document.getElementById('srvMaxUsers').value || null,
+    is_master: document.getElementById('srvMaster').checked,
+  };
+  const pass = document.getElementById('srvPass').value;
+  if (!id && !pass) { showToast(t('srv.err_create'), 'error'); return; }
+  if (pass) payload.marzban_password = pass;
+
+  try {
+    if (id) {
+      await fetch(`/api/servers/${id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      showToast(t('srv.updated'), 'success');
+    } else {
+      payload.marzban_password = pass;
+      await fetch('/api/servers', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      showToast(t('srv.created'), 'success');
+    }
+    closeModal();
+    loadServers();
+  } catch (e) {
+    showToast(t('srv.err_save'), 'error');
+  }
+}
+
+async function deleteServer(id) {
+  if (!confirm(t('srv.confirm_delete'))) return;
+  try {
+    await fetch(`/api/servers/${id}`, { method: 'DELETE' });
+    showToast(t('srv.deleted'), 'success');
+    loadServers();
+  } catch (e) { showToast(t('srv.err_delete'), 'error'); }
+}
+
+async function doHealth(id) {
+  try {
+    const r = await fetch(`/api/servers/${id}/health-check`, { method: 'POST' });
+    const d = await r.json();
+    showToast(t('srv.health_done') + ` — ${d.status}`, d.status === 'online' ? 'success' : 'error');
+    loadServers();
+  } catch (e) { showToast(t('srv.err_health'), 'error'); }
+}
+
+async function showStats(id) {
+  document.getElementById('statsModal').style.display = 'flex';
+  document.getElementById('statsBody').innerHTML = `<p data-i18n="analytics.loading">${t('analytics.loading')}</p>`;
+  try {
+    const r = await fetch(`/api/servers/${id}/stats`);
+    const d = await r.json();
+    document.getElementById('statsBody').innerHTML = `
+      <div class="server-info" style="grid-template-columns:1fr 1fr;">
+        <div><strong>${t('srv.name')}:</strong> ${esc(d.name||'')}</div>
+        <div><strong>${t('srv.status')}:</strong> <span class="status-dot ${d.status}"></span>${d.status}</div>
+        <div><strong>${t('srv.country')}:</strong> ${d.country||'—'}</div>
+        <div><strong>${t('srv.city')}:</strong> ${d.city||'—'}</div>
+        <div><strong>${t('srv.users')}:</strong> ${d.current_users||0}${d.max_users?'/'+d.max_users:''}</div>
+        <div><strong>${t('srv.bandwidth')}:</strong> ${fmtBytes(d.total_bandwidth)}</div>
+        <div><strong>IP:</strong> ${d.ip_address||'—'}</div>
+        <div><strong>${t('srv.master')}:</strong> ${d.is_master?'✓':'—'}</div>
+      </div>
+      ${d.marzban_stats && Object.keys(d.marzban_stats).length ? '<h4 style="margin-top:1rem;">Marzban Stats</h4><pre style="background:var(--bg);padding:1rem;border-radius:8px;overflow-x:auto;font-size:.8rem;">'+JSON.stringify(d.marzban_stats,null,2)+'</pre>' : ''}
+    `;
+  } catch (e) {
+    document.getElementById('statsBody').innerHTML = `<p style="color:var(--danger);">Error loading stats</p>`;
+  }
+}
+
+loadServers();
+setInterval(loadServers, 30000);
+</script>
+{% endblock %}

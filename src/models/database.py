@@ -220,6 +220,28 @@ class AutoRenewal(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class Server(Base):
+    """Marzban серверы для multi-server управления."""
+    __tablename__ = "servers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    marzban_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    marzban_username: Mapped[str] = mapped_column(String(128), nullable=False)
+    marzban_password: Mapped[str] = mapped_column(Text, nullable=False)  # Fernet encrypted
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_master: Mapped[bool] = mapped_column(Boolean, default=False)
+    country: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    city: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+    max_users: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    current_users: Mapped[int] = mapped_column(Integer, default=0)
+    total_bandwidth: Mapped[int] = mapped_column(BigInteger, default=0)  # bytes
+    status: Mapped[str] = mapped_column(String(16), default="offline")  # online/offline
+    last_check_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Alert(Base):
     """Уведомления и предупреждения."""
     __tablename__ = "alerts"

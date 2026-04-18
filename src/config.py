@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     # GeoIP
     geoip_db_path: str = "./data/GeoLite2-City.mmdb"
 
+    # Server encryption
+    server_encrypt_key: str = "change-this-key-for-fernet-32-bytes!"
+
     # Exchange rate cache
     _usdt_rub_rate: float = 95.0
     _rate_updated: float = 0  # timestamp
