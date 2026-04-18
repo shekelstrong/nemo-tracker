@@ -11,6 +11,8 @@ from src.core.analytics import calculate_daily_stats
 from src.core.alerting import (
     check_new_users, check_online_status, check_traffic_limits, check_expiring_users
 )
+from src.core.log_reader import log_reader
+from src.core.device_tracker import device_tracker
 
 
 # Интервалы в секундах
@@ -52,14 +54,20 @@ async def main():
 
     logger.info("✅ Nemo Tracker is running")
 
-    # 6. Запускаем периодические задачи
+    # 6. Синхронизируем лимиты устройств из БД
+    await device_tracker.sync_device_limits_from_marzban()
+    logger.info("📱 Device limits synced")
+
+    # 7. Запускаем периодические задачи
     tasks = [
         asyncio.create_task(_run_periodically(_sync_and_detect, SYNC_INTERVAL, "sync")),
         asyncio.create_task(_run_periodically(_run_analytics, ANALYTICS_INTERVAL, "analytics")),
         asyncio.create_task(_run_periodically(_run_alerts, ALERTS_INTERVAL, "alerts")),
+        asyncio.create_task(_run_periodically(device_tracker.sync_device_limits_from_marzban, 300, "device_sync")),
+        asyncio.create_task(_run_log_reader()),
     ]
 
-    # 7. Запускаем Web-админку в отдельном таске
+    # 8. Запускаем Web-админку в отдельном таске
     tasks.append(asyncio.create_task(_run_web()))
 
     # Ожидаем завершения (никогда не произойдёт в нормальном режиме)
@@ -86,6 +94,34 @@ async def _run_alerts():
     """Каждые 5 мин: проверка лимитов и истечения подписок."""
     await check_traffic_limits()
     await check_expiring_users(days_before=3)
+
+
+async def _on_xray_connection(event: dict):
+    """Callback: Xray лог зафиксировал подключение."""
+    username = event.get("username", "")
+    ip = event.get("ip", "")
+    inbound = event.get("inbound", "")
+    if not username or not ip:
+        return
+    
+    # Записываем IP
+    await device_tracker.record_ip(username, ip, inbound=inbound, source="xray")
+    
+    # Проверяем лимит устройств
+    result = await device_tracker.check_and_enforce(username, inbound=inbound)
+    if result:
+        logger.info(f"Device enforcement: {result['message']}")
+
+
+def _setup_log_reader():
+    """Configure log reader with device tracking callback."""
+    log_reader.on_connection(_on_xray_connection)
+
+
+async def _run_log_reader():
+    """Запуск чтения Xray логов через WebSocket."""
+    _setup_log_reader()
+    await log_reader.start()
 
 
 async def _run_web():
