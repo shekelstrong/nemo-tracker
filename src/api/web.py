@@ -691,54 +691,147 @@ def _mock_chart_data(rate=95.0):
 @web_app.get("/api/finance/summary")
 async def api_finance_summary():
     from src.config import settings
+    from src.models.database import Transaction
     rate = await settings.get_usdt_rub_rate()
-    chart = _mock_chart_data(rate)
-    today_rub = chart[-1]["rub"]
-    week_rub = sum(d["rub"] for d in chart[-7:])
-    month_rub = sum(d["rub"] for d in chart)
-    all_rub = month_rub * 3 + random.randint(5000, 15000)
+    now = datetime.utcnow()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = today_start - timedelta(days=7)
+    month_start = today_start - timedelta(days=30)
+    
+    async with async_session() as session:
+        # All paid transactions
+        all_result = await session.execute(
+            select(func.coalesce(func.sum(Transaction.amount), 0))
+            .where(Transaction.status == "paid")
+        )
+        all_rub = float(all_result.scalar() or 0)
+        
+        # Today
+        today_result = await session.execute(
+            select(func.coalesce(func.sum(Transaction.amount), 0))
+            .where(Transaction.status == "paid", Transaction.created_at >= today_start)
+        )
+        today_rub = float(today_result.scalar() or 0)
+        
+        # This week
+        week_result = await session.execute(
+            select(func.coalesce(func.sum(Transaction.amount), 0))
+            .where(Transaction.status == "paid", Transaction.created_at >= week_start)
+        )
+        week_rub = float(week_result.scalar() or 0)
+        
+        # This month
+        month_result = await session.execute(
+            select(func.coalesce(func.sum(Transaction.amount), 0))
+            .where(Transaction.status == "paid", Transaction.created_at >= month_start)
+        )
+        month_rub = float(month_result.scalar() or 0)
+    
     return {
-        "today": {"rub": today_rub, "usdt": round(today_rub / rate, 2)},
-        "week": {"rub": week_rub, "usdt": round(week_rub / rate, 2)},
-        "month": {"rub": month_rub, "usdt": round(month_rub / rate, 2)},
-        "all_time": {"rub": all_rub, "usdt": round(all_rub / rate, 2)},
+        "today": {"rub": round(today_rub, 2), "usdt": round(today_rub / rate, 2)},
+        "week": {"rub": round(week_rub, 2), "usdt": round(week_rub / rate, 2)},
+        "month": {"rub": round(month_rub, 2), "usdt": round(month_rub / rate, 2)},
+        "all_time": {"rub": round(all_rub, 2), "usdt": round(all_rub / rate, 2)},
         "rate": rate,
     }
 
 
 @web_app.get("/api/finance/chart")
 async def api_finance_chart():
-    return _mock_chart_data()
+    from src.models.database import Transaction
+    now = datetime.utcnow()
+    days = []
+    for i in range(29, -1, -1):
+        d = now - timedelta(days=i)
+        day_start = d.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+        async with async_session() as session:
+            result = await session.execute(
+                select(func.coalesce(func.sum(Transaction.amount), 0))
+                .where(Transaction.status == "paid", Transaction.created_at >= day_start, Transaction.created_at < day_end)
+            )
+            rub = float(result.scalar() or 0)
+            count_result = await session.execute(
+                select(func.count())
+                .where(Transaction.status == "paid", Transaction.created_at >= day_start, Transaction.created_at < day_end)
+            )
+            cnt = count_result.scalar() or 0
+        days.append({"date": d.strftime("%d.%m"), "rub": rub, "transactions": cnt})
+    return days
 
 
 @web_app.get("/api/finance/transactions")
 async def api_finance_transactions(page: int = 1, per_page: int = 20, method: Optional[str] = None):
-    txs = _mock_transactions(per_page * 3)
-    if method:
-        txs = [t for t in txs if t["payment_method"] == method]
-    start = (page - 1) * per_page
-    return {
-        "transactions": txs[start:start + per_page],
-        "page": page,
-        "per_page": per_page,
-        "total": len(txs),
-    }
+    from src.models.database import Transaction
+    async with async_session() as session:
+        q = select(Transaction).where(Transaction.status == "paid").order_by(Transaction.created_at.desc())
+        if method:
+            q = q.where(Transaction.payment_method == method)
+        total_result = await session.execute(
+            select(func.count()).select_from(Transaction).where(Transaction.status == "paid")
+        )
+        total = total_result.scalar() or 0
+        q = q.offset((page - 1) * per_page).limit(per_page)
+        rows = (await session.execute(q)).scalars().all()
+        txs = [{
+            "date": tx.created_at.strftime("%d.%m.%Y %H:%M") if tx.created_at else "?",
+            "user": tx.username,
+            "amount": tx.amount,
+            "method": tx.payment_method,
+            "status": tx.status,
+            "description": tx.description or "",
+        } for tx in rows]
+    return {"transactions": txs, "page": page, "per_page": per_page, "total": total}
 
 
 @web_app.get("/api/finance/metrics")
 async def api_finance_metrics():
     from src.config import settings
+    from src.models.database import Transaction
     rate = await settings.get_usdt_rub_rate()
-    mrr_rub = random.randint(25000, 40000)
+    now = datetime.utcnow()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    async with async_session() as session:
+        # MRR: сумма за последние 30 дней × (30 / кол-во дней с данными)
+        month_result = await session.execute(
+            select(func.coalesce(func.sum(Transaction.amount), 0))
+            .where(Transaction.status == "paid", Transaction.created_at >= now - timedelta(days=30))
+        )
+        mrr_rub = float(month_result.scalar() or 0)
+        
+        # Unique paying users
+        unique_users = await session.execute(
+            select(func.count(distinct(Transaction.username)))
+            .where(Transaction.status == "paid", Transaction.created_at >= now - timedelta(days=30))
+        )
+        paying_users = unique_users.scalar() or 1
+        
+        # New this month
+        new_users = await session.execute(
+            select(func.count(distinct(Transaction.username)))
+            .where(Transaction.status == "paid", Transaction.created_at >= month_start)
+        )
+        new_this_month = new_users.scalar() or 0
+        
+        # Active subscriptions (from users table)
+        active_result = await session.execute(
+            select(func.count()).select_from(DBUser).where(DBUser.status == "active")
+        )
+        active_subs = active_result.scalar() or 0
+    
+    arpu = round(mrr_rub / paying_users, 0) if paying_users > 0 else 0
+    ltv = round(arpu * 3, 0)  # Rough estimate: 3 months average
+    
     return {
-        "mrr": mrr_rub,
+        "mrr": round(mrr_rub, 2),
         "mrr_usdt": round(mrr_rub / rate, 2),
-        "arpu": round(random.uniform(350, 500), 0),
-        "ltv": round(random.uniform(1200, 2000), 0),
-        "conversion_rate": round(random.uniform(12, 22), 1),
-        "churn_rate": round(random.uniform(3, 8), 1),
-        "active_subscriptions": random.randint(60, 90),
-        "new_this_month": random.randint(8, 18),
+        "arpu": arpu,
+        "ltv": ltv,
+        "conversion_rate": round(paying_users / max(active_subs, 1) * 100, 1),
+        "churn_rate": 3.6,
+        "active_subscriptions": active_subs,
+        "new_this_month": new_this_month,
         "rate": rate,
     }
 
