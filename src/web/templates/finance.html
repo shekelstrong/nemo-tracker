@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+
+{% block title %}Finance — Nemo Tracker{% endblock %}
+{% set page = 'finance' %}
+
+{% block topbar_title %}fin.title{% endblock %}
+
+{% block content %}
+<!-- Summary Cards -->
+<div class="stats-grid">
+  <div class="stat-card finance-card-green">
+    <div class="stat-icon"><i class="fas fa-calendar-day"></i></div>
+    <div class="stat-info">
+      <span class="stat-label" data-i18n="fin.today">Today</span>
+      <span class="stat-value" id="finToday">—</span>
+      <span class="stat-sub" id="finTodayUsdt"></span>
+    </div>
+  </div>
+  <div class="stat-card finance-card-green">
+    <div class="stat-icon"><i class="fas fa-calendar-week"></i></div>
+    <div class="stat-info">
+      <span class="stat-label" data-i18n="fin.week">This Week</span>
+      <span class="stat-value" id="finWeek">—</span>
+      <span class="stat-sub" id="finWeekUsdt"></span>
+    </div>
+  </div>
+  <div class="stat-card finance-card-green">
+    <div class="stat-icon"><i class="fas fa-calendar-alt"></i></div>
+    <div class="stat-info">
+      <span class="stat-label" data-i18n="fin.month">This Month</span>
+      <span class="stat-value" id="finMonth">—</span>
+      <span class="stat-sub" id="finMonthUsdt"></span>
+    </div>
+  </div>
+  <div class="stat-card finance-card-green">
+    <div class="stat-icon"><i class="fas fa-infinity"></i></div>
+    <div class="stat-info">
+      <span class="stat-label" data-i18n="fin.all_time">All Time</span>
+      <span class="stat-value" id="finAll">—</span>
+      <span class="stat-sub" id="finAllUsdt"></span>
+    </div>
+  </div>
+</div>
+
+<!-- Metrics Row -->
+<div class="stats-grid" style="margin-top:1rem" id="metricsGrid">
+  <div class="stat-card">
+    <div class="stat-info">
+      <span class="stat-label" data-i18n="fin.mrr_label">Monthly Recurring Revenue</span>
+      <span class="stat-value" id="finMrr">—</span>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-info">
+      <span class="stat-label" data-i18n="fin.arpu_label">ARPU</span>
+      <span class="stat-value" id="finArpu">—</span>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-info">
+      <span class="stat-label" data-i18n="fin.ltv_label">LTV</span>
+      <span class="stat-value" id="finLtv">—</span>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-info">
+      <span class="stat-label" data-i18n="fin.conversion_label">Conversion</span>
+      <span class="stat-value" id="finConv">—</span>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-info">
+      <span class="stat-label" data-i18n="fin.churn_label">Churn</span>
+      <span class="stat-value" id="finChurn">—</span>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-info">
+      <span class="stat-label" data-i18n="fin.active_subs">Active Subscriptions</span>
+      <span class="stat-value" id="finActiveSubs">—</span>
+    </div>
+  </div>
+</div>
+
+<!-- Chart -->
+<div class="card" style="margin-top:1rem">
+  <h3 data-i18n="fin.chart_title">Revenue (30 days)</h3>
+  <div style="position:relative;height:320px">
+    <canvas id="revenueChart"></canvas>
+  </div>
+</div>
+
+<!-- Filters + Transactions Table -->
+<div class="card" style="margin-top:1rem">
+  <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
+    <h3 style="margin:0" data-i18n="fin.transactions_title">Recent Transactions</h3>
+    <select id="finFilterMethod" onchange="loadTransactions()" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text)">
+      <option value="" data-i18n="fin.filter_all">All methods</option>
+      <option value="cryptopay">CryptoPay</option>
+      <option value="platega">Platega</option>
+    </select>
+  </div>
+  <div style="overflow-x:auto">
+    <table class="data-table" id="txTable">
+      <thead>
+        <tr>
+          <th data-i18n="fin.date">Date</th>
+          <th data-i18n="fin.user">User</th>
+          <th data-i18n="fin.amount">Amount</th>
+          <th data-i18n="fin.method">Method</th>
+          <th data-i18n="fin.status">Status</th>
+          <th data-i18n="fin.description">Description</th>
+        </tr>
+      </thead>
+      <tbody id="txBody"></tbody>
+    </table>
+  </div>
+  <div style="display:flex;justify-content:center;gap:0.5rem;margin-top:1rem" id="txPagination"></div>
+</div>
+
+<style>
+.finance-card-green {
+  background: linear-gradient(135deg, rgba(34,197,94,0.15), rgba(16,185,129,0.1));
+  border: 1px solid rgba(34,197,94,0.25);
+}
+.finance-card-green .stat-value {
+  color: #22c55e;
+}
+.stat-sub {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #94a3b8);
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const lang = getLang();
+
+function fmtRub(v) {
+  return Number(v).toLocaleString('ru-RU') + ' ₽';
+}
+function fmtUsdt(v) {
+  return '$' + Number(v).toFixed(2) + ' USDT';
+}
+function statusBadge(s) {
+  const map = {
+    paid: { cls: 'status-active', text: t('fin.paid') },
+    pending: { cls: 'status-pending', text: t('fin.pending') },
+    failed: { cls: 'status-expired', text: t('fin.failed') },
+  };
+  const m = map[s] || { cls: '', text: s };
+  return `<span class="status-badge ${m.cls}">${m.text}</span>`;
+}
+
+// Summary
+(async () => {
+  const [summary, metrics] = await Promise.all([
+    fetch('/api/finance/summary').then(r => r.json()),
+    fetch('/api/finance/metrics').then(r => r.json()),
+  ]);
+  document.getElementById('finToday').textContent = fmtRub(summary.today.rub);
+  document.getElementById('finTodayUsdt').textContent = fmtUsdt(summary.today.usdt);
+  document.getElementById('finWeek').textContent = fmtRub(summary.week.rub);
+  document.getElementById('finWeekUsdt').textContent = fmtUsdt(summary.week.usdt);
+  document.getElementById('finMonth').textContent = fmtRub(summary.month.rub);
+  document.getElementById('finMonthUsdt').textContent = fmtUsdt(summary.month.usdt);
+  document.getElementById('finAll').textContent = fmtRub(summary.all_time.rub);
+  document.getElementById('finAllUsdt').textContent = fmtUsdt(summary.all_time.usdt);
+
+  document.getElementById('finMrr').textContent = fmtRub(metrics.mrr) + ' / ' + fmtUsdt(metrics.mrr_usdt);
+  document.getElementById('finArpu').textContent = fmtRub(metrics.arpu);
+  document.getElementById('finLtv').textContent = fmtRub(metrics.ltv);
+  document.getElementById('finConv').textContent = metrics.conversion_rate + '%';
+  document.getElementById('finChurn').textContent = metrics.churn_rate + '%';
+  document.getElementById('finActiveSubs').textContent = metrics.active_subscriptions + ' ' + t('fin.subscribers');
+})();
+
+// Chart
+(async () => {
+  const data = await fetch('/api/finance/chart').then(r => r.json());
+  const ctx = document.getElementById('revenueChart').getContext('2d');
+  const gradient = ctx.createLinearGradient(0, 0, 0, 320);
+  gradient.addColorStop(0, 'rgba(34, 197, 94, 0.3)');
+  gradient.addColorStop(1, 'rgba(34, 197, 94, 0.0)');
+
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: data.map(d => d.date),
+      datasets: [{
+        label: '₽',
+        data: data.map(d => d.rub),
+        fill: true,
+        backgroundColor: gradient,
+        borderColor: '#22c55e',
+        borderWidth: 2,
+        tension: 0.4,
+        pointRadius: 2,
+        pointHoverRadius: 5,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: {
+          beginAtZero: true,
+          grid: { color: 'rgba(148,163,184,0.1)' },
+          ticks: { callback: v => v.toLocaleString() + ' ₽' },
+        },
+        x: {
+          grid: { display: false },
+        }
+      }
+    }
+  });
+})();
+
+// Transactions table
+let txPage = 1;
+async function loadTransactions() {
+  const method = document.getElementById('finFilterMethod').value;
+  const params = new URLSearchParams({ page: txPage, per_page: 20 });
+  if (method) params.set('method', method);
+  const data = await fetch('/api/finance/transactions?' + params).then(r => r.json());
+  const tbody = document.getElementById('txBody');
+  tbody.innerHTML = data.transactions.map(tx => {
+    const dt = new Date(tx.created_at);
+    const dateStr = dt.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    const amtStr = tx.currency === 'USDT' ? '$' + tx.amount + ' USDT' : tx.amount + ' ₽';
+    return `<tr>
+      <td>${dateStr}</td>
+      <td>${tx.username}</td>
+      <td><strong>${amtStr}</strong></td>
+      <td>${tx.payment_method}</td>
+      <td>${statusBadge(tx.status)}</td>
+      <td>${tx.description || ''}</td>
+    </tr>`;
+  }).join('');
+
+  // Pagination
+  const totalPages = Math.ceil(data.total / data.per_page);
+  const pagDiv = document.getElementById('txPagination');
+  pagDiv.innerHTML = '';
+  for (let p = 1; p <= Math.min(totalPages, 5); p++) {
+    const btn = document.createElement('button');
+    btn.textContent = p;
+    btn.className = 'btn' + (p === txPage ? ' btn-primary' : '');
+    btn.style.cssText = 'padding:4px 12px;font-size:0.85rem';
+    btn.onclick = () => { txPage = p; loadTransactions(); };
+    pagDiv.appendChild(btn);
+  }
+}
+loadTransactions();
+</script>
+{% endblock %}

@@ -84,6 +84,34 @@ class Analytics(Base):
     expired_users: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class Transaction(Base):
+    """Финансовые транзакции."""
+    __tablename__ = "transactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    user_telegram_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    amount: Mapped[float] = mapped_column(Float, nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), default="RUB")  # RUB / USDT
+    payment_method: Mapped[str] = mapped_column(String(32), default="cryptopay")  # cryptopay / platega
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending / paid / failed
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class DailyRevenue(Base):
+    """Агрегированная выручка за день."""
+    __tablename__ = "daily_revenue"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    date: Mapped[datetime] = mapped_column(Date, unique=True, nullable=False, index=True)
+    total_rub: Mapped[float] = mapped_column(Float, default=0.0)
+    total_usdt: Mapped[float] = mapped_column(Float, default=0.0)
+    transaction_count: Mapped[int] = mapped_column(Integer, default=0)
+    new_subscriptions: Mapped[int] = mapped_column(Integer, default=0)
+    renewals: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class Alert(Base):
     """Уведомления и предупреждения."""
     __tablename__ = "alerts"

@@ -144,6 +144,10 @@ async def page_settings(request: Request):
 async def page_alerts(request: Request):
     return templates.TemplateResponse(request, "alerts.html")
 
+@web_app.get("/finance", response_class=HTMLResponse)
+async def page_finance(request: Request):
+    return templates.TemplateResponse(request, "finance.html")
+
 # ---------------------------------------------------------------------------
 # API routes — REAL DATA
 # ---------------------------------------------------------------------------
@@ -269,8 +273,9 @@ async def api_users():
                 "traffic_pct": traffic_pct,
                 "devices": u.device_count or 0,
                 "last_online": u.online_at.isoformat() if u.online_at else None,
-                "expire": u.expire.isoformat() if u.expire else None,
+                "expire": u.expire.strftime("%d.%m.%Y") if u.expire else None,
                 "tier": u.tier or 0,
+                "tier_name": "Premium" if (u.tier or 0) >= 1 else "Стандарт",
             })
         return users
 
@@ -314,9 +319,10 @@ async def api_user_detail(username: str):
             "traffic_limit_gb": round((user.data_limit or 0) / 1024**3, 2) if user.data_limit else None,
             "devices": len(ip_history),
             "device_limit": user.device_count or 0,
-            "created": user.created_at.strftime("%Y-%m-%d") if user.created_at else "?",
-            "expire": user.expire.strftime("%Y-%m-%d") if user.expire else None,
+            "created": user.created_at.strftime("%d.%m.%Y") if user.created_at else "?",
+            "expire": user.expire.strftime("%d.%m.%Y") if user.expire else None,
             "tier": user.tier or 0,
+            "tier_name": "Premium" if (user.tier or 0) >= 1 else "Стандарт",
             "traffic_7d": traffic_7d,
             "ip_history": ip_history,
             "connections": connections,
@@ -497,6 +503,107 @@ async def api_test_telegram():
     # TODO: real bot test
     await asyncio.sleep(0.5)
     return {"ok": True, "message": "Bot token valid"}
+
+
+# ---------------------------------------------------------------------------
+# API routes — Finance (mock data)
+# ---------------------------------------------------------------------------
+
+import random
+
+def _mock_transactions(count=20):
+    names = ["alice", "bob", "charlie", "diana", "evgeny", "fedor", "greta", "hugo", "ira", "jake",
+             "kate", "leo", "mike", "nina", "oleg", "pavel", "rita", "sergey", "tanya", "ivan"]
+    methods = ["cryptopay", "platega"]
+    statuses = ["paid"] * 8 + ["pending"] + ["failed"]
+    txs = []
+    now = datetime.utcnow()
+    for i in range(count):
+        days_ago = i // 2
+        hrs = random.randint(0, 23)
+        ts = now - timedelta(days=days_ago, hours=hrs)
+        method = random.choice(methods)
+        if method == "cryptopay":
+            amount = round(random.uniform(3.0, 5.5), 2)
+            currency = "USDT"
+        else:
+            amount = random.choice([300, 350, 399, 450, 499, 550, 599])
+            currency = "RUB"
+        txs.append({
+            "id": 1000 + count - i,
+            "username": random.choice(names),
+            "amount": amount,
+            "currency": currency,
+            "payment_method": method,
+            "status": random.choice(statuses),
+            "description": "VPN subscription" if random.random() > 0.3 else "Renewal",
+            "created_at": ts.isoformat(),
+        })
+    return txs
+
+
+def _mock_chart_data():
+    now = datetime.utcnow()
+    days = []
+    for i in range(29, -1, -1):
+        d = now - timedelta(days=i)
+        rub = random.randint(800, 3500)
+        usdt = round(rub / 95, 2)
+        days.append({
+            "date": d.strftime("%b %d"),
+            "rub": rub,
+            "usdt": usdt,
+            "transactions": random.randint(2, 8),
+        })
+    return days
+
+
+@web_app.get("/api/finance/summary")
+async def api_finance_summary():
+    chart = _mock_chart_data()
+    today_rub = chart[-1]["rub"]
+    week_rub = sum(d["rub"] for d in chart[-7:])
+    month_rub = sum(d["rub"] for d in chart)
+    all_rub = month_rub * 3 + random.randint(5000, 15000)
+    return {
+        "today": {"rub": today_rub, "usdt": round(today_rub / 95, 2)},
+        "week": {"rub": week_rub, "usdt": round(week_rub / 95, 2)},
+        "month": {"rub": month_rub, "usdt": round(month_rub / 95, 2)},
+        "all_time": {"rub": all_rub, "usdt": round(all_rub / 95, 2)},
+    }
+
+
+@web_app.get("/api/finance/chart")
+async def api_finance_chart():
+    return _mock_chart_data()
+
+
+@web_app.get("/api/finance/transactions")
+async def api_finance_transactions(page: int = 1, per_page: int = 20, method: Optional[str] = None):
+    txs = _mock_transactions(per_page * 3)
+    if method:
+        txs = [t for t in txs if t["payment_method"] == method]
+    start = (page - 1) * per_page
+    return {
+        "transactions": txs[start:start + per_page],
+        "page": page,
+        "per_page": per_page,
+        "total": len(txs),
+    }
+
+
+@web_app.get("/api/finance/metrics")
+async def api_finance_metrics():
+    return {
+        "mrr": random.randint(25000, 40000),
+        "mrr_usdt": round(random.uniform(260, 420), 2),
+        "arpu": round(random.uniform(350, 500), 0),
+        "ltv": round(random.uniform(1200, 2000), 0),
+        "conversion_rate": round(random.uniform(12, 22), 1),
+        "churn_rate": round(random.uniform(3, 8), 1),
+        "active_subscriptions": random.randint(60, 90),
+        "new_this_month": random.randint(8, 18),
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -142,6 +142,37 @@ const T = {
 
   // Footer
   "footer.version": { en: "Nemo Tracker v0.1 · Open Source", ru: "Nemo Tracker v0.1 · Open Source" },
+
+  // Finance
+  "nav.finance": { en: "Finance", ru: "Финансы" },
+  "fin.title": { en: "Finance", ru: "Финансы" },
+  "fin.today": { en: "Today", ru: "Сегодня" },
+  "fin.week": { en: "This Week", ru: "Эта неделя" },
+  "fin.month": { en: "This Month", ru: "Этот месяц" },
+  "fin.all_time": { en: "All Time", ru: "Всё время" },
+  "fin.mrr": { en: "MRR (Monthly Recurring Revenue)", ru: "MRR (Регулярная месячная выручка)" },
+  "fin.chart_title": { en: "Revenue (30 days)", ru: "Доходы (30 дней)" },
+  "fin.revenue_rub": { en: "Revenue (₽)", ru: "Доход (₽)" },
+  "fin.transactions_title": { en: "Recent Transactions", ru: "Последние транзакции" },
+  "fin.date": { en: "Date", ru: "Дата" },
+  "fin.user": { en: "User", ru: "Пользователь" },
+  "fin.amount": { en: "Amount", ru: "Сумма" },
+  "fin.method": { en: "Method", ru: "Метод" },
+  "fin.status": { en: "Status", ru: "Статус" },
+  "fin.description": { en: "Description", ru: "Описание" },
+  "fin.filter_all": { en: "All methods", ru: "Все методы" },
+  "fin.paid": { en: "Paid", ru: "Оплачено" },
+  "fin.pending": { en: "Pending", ru: "Ожидает" },
+  "fin.failed": { en: "Failed", ru: "Ошибка" },
+  "fin.metrics_title": { en: "Key Metrics", ru: "Ключевые метрики" },
+  "fin.mrr_label": { en: "Monthly Recurring Revenue", ru: "Регулярная выручка" },
+  "fin.arpu_label": { en: "ARPU (Average Revenue Per User)", ru: "ARPU (Средний доход с пользователя)" },
+  "fin.ltv_label": { en: "LTV (Lifetime Value)", ru: "LTV (Пожизненная ценность)" },
+  "fin.conversion_label": { en: "Conversion Rate", ru: "Конверсия" },
+  "fin.churn_label": { en: "Churn Rate", ru: "Отток" },
+  "fin.active_subs": { en: "Active Subscriptions", ru: "Активные подписки" },
+  "fin.new_this_month": { en: "New This Month", ru: "Новые за месяц" },
+  "fin.subscribers": { en: "subscribers", ru: "подписчиков" },
 };
 
 // Fetch online count for sidebar badge

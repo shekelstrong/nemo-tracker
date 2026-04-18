@@ -189,7 +189,7 @@ async function onPageLoad() {
         <div class="meta">
           <span class="${badgeClass(u.status)}">${t('users.'+u.status)||u.status}</span>
           <span>•</span>
-          <span>Tier ${u.tier}</span>
+          <span>${u.tier_name || (u.tier >= 1 ? 'Premium' : 'Стандарт')}</span>
         </div>
       </div>
     `;
