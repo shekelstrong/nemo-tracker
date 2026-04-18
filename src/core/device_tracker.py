@@ -123,11 +123,12 @@ class DeviceTracker:
         self._device_limits[username] = limit
 
     async def check_and_enforce(self, username: str, inbound: str = "") -> Optional[dict]:
-        """Check if user exceeds device limit. Returns alert dict if exceeded.
+        """Check if user exceeds device limit. Auto-block if exceeded.
         
         Rules (all configurable):
         - Inbounds in ignore_inbounds: NEVER enforce
         - Only enforce if user has device_count > 0 (configurable)
+        - When exceeded: disable user in Marzban + send Telegram notification
         """
         # Skip ignored inbounds
         if inbound and inbound in settings.ignore_inbounds_list:
@@ -135,17 +136,30 @@ class DeviceTracker:
 
         limit = self._device_limits.get(username, 0)
         if limit <= 0:
-            return None  # No limit set (old client or unlimited)
+            return None  # No limit set
 
         count = await self.get_unique_ip_count(username, days=30)
         
         if count > limit:
+            # === БЛОКИРОВКА ===
+            logger.warning(f"🚫 Device limit exceeded: {username} has {count} IPs, limit {limit}")
+            
+            # Disable in Marzban
+            try:
+                await marzban_client.disable_user(username)
+                logger.info(f"🔒 {username} disabled in Marzban (device limit: {count}/{limit})")
+            except Exception as e:
+                logger.error(f"Failed to disable {username} in Marzban: {e}")
+            
+            # Send Telegram notification
+            await self._notify_user_device_limit(username, count, limit)
+            
             return {
                 "username": username,
                 "device_count": count,
                 "device_limit": limit,
-                "action": "exceeded",
-                "message": f"⚠️ {username}: {count} уникальных IP при лимите {limit}",
+                "action": "blocked",
+                "message": f"🚫 {username}: заблокирован ({count}/{limit} устройств)",
             }
         elif count == limit:
             return {
@@ -156,6 +170,34 @@ class DeviceTracker:
                 "message": f"📱 {username}: {count}/{limit} устройств (лимит достигнут)",
             }
         return None
+
+    async def _notify_user_device_limit(self, marzban_username: str, current: int, limit: int):
+        """Send Telegram notification about device limit exceeded."""
+        try:
+            # Extract telegram ID from username pattern: user_{tg_id}_{date}_{time}
+            parts = marzban_username.split("_")
+            if len(parts) >= 2 and parts[0] == "user":
+                tg_id = parts[1]
+                # Use bot API to send notification
+                bot_token = getattr(settings, 'BOT_TOKEN', '')
+                if bot_token:
+                    import aiohttp
+                    text = (
+                        f"⚠️ <b>Лимит устройств превышен</b>\n\n"
+                        f"Обнаружено устройств: <b>{current}</b>\n"
+                        f"Ваш лимит: <b>{limit}</b>\n\n"
+                        f"VPN заблокирован. Чтобы разблокировать:\n"
+                        f"• Приобретите доп. подписку\n"
+                        f"• Или напишите в поддержку"
+                    )
+                    async with aiohttp.ClientSession() as http:
+                        await http.post(
+                            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                            json={"chat_id": int(tg_id), "text": text, "parse_mode": "HTML"}
+                        )
+                    logger.info(f"📨 Device limit notification sent to {tg_id}")
+        except Exception as e:
+            logger.error(f"Failed to send device limit notification: {e}")
 
     async def sync_device_limits_from_marzban(self):
         """Sync device limits from Marzban users (device_count field)."""
