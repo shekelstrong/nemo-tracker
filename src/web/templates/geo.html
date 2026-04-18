@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Geo Map — Nemo Tracker{% endblock %}
+{% block topbar_title %}nav.geo{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2 data-i18n="geo.title">Geo Map</h2>
+  <div class="header-actions">
+    <button class="btn btn-primary" onclick="enrichIPs()" data-i18n="geo.enrich_btn">Enrich IPs</button>
+  </div>
+</div>
+
+<!-- Map -->
+<div style="height: 450px; border-radius: 12px; overflow: hidden; margin-bottom: 24px; position: relative;">
+  <div id="map" style="height: 100%; width: 100%;"></div>
+</div>
+
+<!-- Filter -->
+<div class="card" style="margin-bottom: 16px;">
+  <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+    <label data-i18n="geo.filter_country">Filter by country:</label>
+    <select id="countryFilter" onchange="filterCountry(this.value)" style="padding: 6px 12px; border-radius: 6px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border);">
+      <option value="" data-i18n="geo.all_countries">All countries</option>
+    </select>
+    <span id="markerCount" style="color: var(--text-secondary);"></span>
+  </div>
+</div>
+
+<!-- Suspicious connections -->
+<div class="card">
+  <h3 style="margin-bottom: 12px;" data-i18n="geo.suspicious">Suspicious Connections</h3>
+  <div id="fraudTable">
+    <p data-i18n="geo.loading">Loading...</p>
+  </div>
+</div>
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<style>
+  .leaflet-popup-content { color: #333; }
+  .leaflet-popup-content strong { color: #111; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let map, markers = [], allData = [];
+
+function initMap() {
+  map = L.map('map').setView([30, 0], 2);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap',
+    maxZoom: 18,
+  }).addTo(map);
+}
+
+async function loadMap() {
+  const resp = await fetch('/api/geo/map');
+  allData = await resp.json();
+  renderMarkers(allData);
+  populateCountryFilter(allData);
+}
+
+function renderMarkers(data) {
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+  const seen = new Set();
+  data.forEach(d => {
+    const key = `${d.lat},${d.lon}`;
+    // Aggregate multiple users at same point
+    if (!seen.has(key)) {
+      seen.add(key);
+      const atPoint = data.filter(x => x.lat === d.lat && x.lon === d.lon);
+      const popup = atPoint.map(x =>
+        `<strong>${x.username}</strong> — ${x.ip}<br>${x.city || ''}, ${x.country || ''}<br><small>${x.last_seen || ''}</small>`
+      ).join('<hr style="margin:4px 0">');
+      const m = L.circleMarker([d.lat, d.lon], {
+        radius: Math.min(4 + atPoint.length * 2, 15),
+        fillColor: atPoint.length > 1 ? '#f59e0b' : '#3b82f6',
+        color: '#fff', weight: 1, fillOpacity: 0.8,
+      }).addTo(map).bindPopup(popup);
+      markers.push(m);
+    }
+  });
+  document.getElementById('markerCount').textContent = `${data.length} IPs / ${markers.length} locations`;
+}
+
+function populateCountryFilter(data) {
+  const sel = document.getElementById('countryFilter');
+  const countries = [...new Set(data.map(d => d.country).filter(Boolean))].sort();
+  const prev = sel.value;
+  // Keep first "All" option
+  while (sel.options.length > 1) sel.remove(1);
+  countries.forEach(c => {
+    const o = document.createElement('option');
+    o.value = c; o.textContent = c;
+    sel.appendChild(o);
+  });
+  sel.value = prev;
+}
+
+function filterCountry(val) {
+  const filtered = val ? allData.filter(d => d.country === val) : allData;
+  renderMarkers(filtered);
+}
+
+async function loadFraud() {
+  const resp = await fetch('/api/geo/fraud');
+  const data = await resp.json();
+  const el = document.getElementById('fraudTable');
+  if (!data.length) {
+    el.innerHTML = `<p style="color:var(--text-secondary);" data-i18n="geo.no_suspicious">No suspicious activity detected</p>`;
+    return;
+  }
+  el.innerHTML = `<table class="data-table">
+    <thead><tr>
+      <th data-i18n="geo.user">User</th>
+      <th data-i18n="geo.reason">Reason</th>
+      <th data-i18n="geo.countries">Countries</th>
+      <th data-i18n="geo.ips">IPs</th>
+    </tr></thead>
+    <tbody>${data.map(d => `<tr>
+      <td><a href="/users/${d.username}">${d.username}</a></td>
+      <td>${d.reason_ru || d.reason_en || d.reason}</td>
+      <td>${d.countries.join(', ')}</td>
+      <td>${d.ips.slice(0, 3).map(i => `${i.ip} (${i.country})`).join('<br>')}${d.ips.length > 3 ? '<br>...' : ''}</td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+
+async function enrichIPs() {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = '⏳';
+  try {
+    const resp = await fetch('/api/geo/enrich', { method: 'POST' });
+    const data = await resp.json();
+    alert(`Enriched ${data.enriched} of ${data.total} IPs`);
+    loadMap();
+    loadFraud();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = T('geo.enrich_btn');
+  }
+}
+
+initMap();
+loadMap();
+loadFraud();
+</script>
+{% endblock %}

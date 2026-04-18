@@ -34,7 +34,9 @@ from src.models import async_session
 from src.models.database import User as DBUser, Analytics, Alert, Connection
 from src.core.marzban_client import marzban_client
 from src.core.device_tracker import device_tracker
+from src.core.geoip import get_geo
 from sqlalchemy import select, func, desc, distinct, delete
+from src.models.database import UserIP
 
 # ---------------------------------------------------------------------------
 # WebSocket manager
@@ -151,6 +153,10 @@ async def page_alerts(request: Request):
 @web_app.get("/finance", response_class=HTMLResponse)
 async def page_finance(request: Request):
     return templates.TemplateResponse(request, "finance.html")
+
+@web_app.get("/geo", response_class=HTMLResponse)
+async def page_geo(request: Request):
+    return templates.TemplateResponse(request, "geo.html")
 
 # ---------------------------------------------------------------------------
 # API routes — REAL DATA
@@ -834,6 +840,132 @@ async def api_finance_metrics():
         "new_this_month": new_this_month,
         "rate": rate,
     }
+
+
+# ---------------------------------------------------------------------------
+# API routes — GeoIP
+# ---------------------------------------------------------------------------
+
+@web_app.post("/api/geo/enrich")
+async def api_geo_enrich():
+    """Enrich all UserIP records with geo data."""
+    async with async_session() as session:
+        rows = (await session.execute(
+            select(UserIP).where(UserIP.geo_country == None)
+        )).scalars().all()
+
+        enriched = 0
+        for row in rows:
+            geo = await get_geo(row.ip)
+            if geo.get("country"):
+                row.geo_country = geo["country"]
+                row.geo_city = geo.get("city")
+                enriched += 1
+        await session.commit()
+
+    return {"total": len(rows), "enriched": enriched}
+
+
+@web_app.get("/api/geo/fraud")
+async def api_geo_fraud():
+    """Detect potential account sharing based on geolocation."""
+    now = datetime.utcnow()
+    suspicious = []
+
+    async with async_session() as session:
+        # Rule 1: >3 different countries in last 30 days
+        month_ago = now - timedelta(days=30)
+        rows_30d = (await session.execute(
+            select(UserIP.username, UserIP.geo_country)
+            .where(UserIP.last_seen >= month_ago, UserIP.geo_country != None)
+        )).all()
+
+        from collections import defaultdict
+        user_countries_30d: dict[str, set[str]] = defaultdict(set)
+        for username, country in rows_30d:
+            if country:
+                user_countries_30d[username].add(country)
+
+        for username, countries in user_countries_30d.items():
+            if len(countries) > 3:
+                # Get IPs for this user
+                ips = (await session.execute(
+                    select(UserIP.ip, UserIP.geo_country, UserIP.geo_city, UserIP.last_seen)
+                    .where(UserIP.username == username, UserIP.last_seen >= month_ago)
+                    .order_by(desc(UserIP.last_seen))
+                )).all()
+                suspicious.append({
+                    "username": username,
+                    "reason": "too_many_countries_30d" if len(countries) > 3 else "multi_country_1h",
+                    "reason_en": f"{len(countries)} countries in 30 days" if len(countries) > 3 else "2+ countries in last hour",
+                    "reason_ru": f"{len(countries)} стран за 30 дней" if len(countries) > 3 else "2+ стран за последний час",
+                    "countries": list(countries),
+                    "ips": [{"ip": ip, "country": c, "city": city,
+                             "last_seen": ls.isoformat() if ls else None} for ip, c, city, ls in ips[:10]],
+                })
+
+        # Rule 2: 2+ countries in last hour
+        hour_ago = now - timedelta(hours=1)
+        rows_1h = (await session.execute(
+            select(UserIP.username, UserIP.geo_country)
+            .where(UserIP.last_seen >= hour_ago, UserIP.geo_country != None)
+        )).all()
+
+        user_countries_1h: dict[str, set[str]] = defaultdict(set)
+        for username, country in rows_1h:
+            if country:
+                user_countries_1h[username].add(country)
+
+        for username, countries in user_countries_1h.items():
+            if len(countries) >= 2:
+                # Skip if already flagged
+                if any(s["username"] == username for s in suspicious):
+                    continue
+                ips = (await session.execute(
+                    select(UserIP.ip, UserIP.geo_country, UserIP.geo_city, UserIP.last_seen)
+                    .where(UserIP.username == username, UserIP.last_seen >= hour_ago)
+                    .order_by(desc(UserIP.last_seen))
+                )).all()
+                suspicious.append({
+                    "username": username,
+                    "reason": "multi_country_1h",
+                    "reason_en": f"{len(countries)} countries in last hour",
+                    "reason_ru": f"{len(countries)} стран за последний час",
+                    "countries": list(countries),
+                    "ips": [{"ip": ip, "country": c, "city": city,
+                             "last_seen": ls.isoformat() if ls else None} for ip, c, city, ls in ips[:10]],
+                })
+
+    return suspicious
+
+
+@web_app.get("/api/geo/map")
+async def api_geo_map():
+    """All IP locations for the map."""
+    async with async_session() as session:
+        rows = (await session.execute(
+            select(UserIP).order_by(desc(UserIP.last_seen))
+        )).scalars().all()
+
+        markers = []
+        seen = set()
+        for ip in rows:
+            if ip.ip in seen:
+                continue
+            seen.add(ip.ip)
+            # Only include if we have lat/lon
+            geo = await get_geo(ip.ip)
+            if geo.get("lat") is not None:
+                markers.append({
+                    "username": ip.username,
+                    "ip": ip.ip,
+                    "country": geo.get("country") or ip.geo_country,
+                    "city": geo.get("city") or ip.geo_city,
+                    "lat": geo["lat"],
+                    "lon": geo["lon"],
+                    "last_seen": ip.last_seen.isoformat() if ip.last_seen else None,
+                })
+        return markers
 
 
 # ---------------------------------------------------------------------------

@@ -6,6 +6,19 @@ const T = {
   "nav.alerts": { en: "Alerts", ru: "Оповещения" },
   "nav.settings": { en: "Settings", ru: "Настройки" },
 
+  // Geo
+  "geo.title": { en: "Geo Map", ru: "Карта подключений" },
+  "geo.enrich_btn": { en: "Enrich IPs", ru: "Обогатить IP" },
+  "geo.filter_country": { en: "Filter by country:", ru: "Фильтр по стране:" },
+  "geo.all_countries": { en: "All countries", ru: "Все страны" },
+  "geo.suspicious": { en: "Suspicious Connections", ru: "Подозрительные подключения" },
+  "geo.loading": { en: "Loading...", ru: "Загрузка..." },
+  "geo.no_suspicious": { en: "No suspicious activity detected", ru: "Подозрительной активности не обнаружено" },
+  "geo.user": { en: "User", ru: "Пользователь" },
+  "geo.reason": { en: "Reason", ru: "Причина" },
+  "geo.countries": { en: "Countries", ru: "Страны" },
+  "geo.ips": { en: "IPs", ru: "IP-адреса" },
+
   // Dashboard
   "dash.total_users": { en: "Total Users", ru: "Всего пользователей" },
   "dash.active_users": { en: "Active Users", ru: "Активные" },
@@ -144,6 +157,7 @@ const T = {
   "footer.version": { en: "Nemo Tracker v0.1 · Open Source", ru: "Nemo Tracker v0.1 · Open Source" },
 
   "nav.finance": { en: "Finance", ru: "Финансы" },
+  "nav.geo": { en: "Geo Map", ru: "🗺️ Карта" },
   "nav.analytics": { en: "Analytics", ru: "Аналитика" },
   "fin.title": { en: "Finance", ru: "Финансы" },
   "fin.today": { en: "Today", ru: "Сегодня" },
