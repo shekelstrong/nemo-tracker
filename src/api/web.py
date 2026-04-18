@@ -197,32 +197,31 @@ def _mock_alerts():
 
 @web_app.get("/", response_class=HTMLResponse)
 async def page_dashboard(request: Request):
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+    return templates.TemplateResponse(request, "dashboard.html")
 
 @web_app.get("/users", response_class=HTMLResponse)
 async def page_users(request: Request):
-    return templates.TemplateResponse("users.html", {"request": request})
+    return templates.TemplateResponse(request, "users.html")
 
 @web_app.get("/users/{username}", response_class=HTMLResponse)
 async def page_user_detail(request: Request, username: str):
-    return templates.TemplateResponse("user_detail.html", {"request": request, "username": username})
+    return templates.TemplateResponse(request, "user_detail.html", {"username": username})
 
 @web_app.get("/devices", response_class=HTMLResponse)
 async def page_devices(request: Request):
-    return templates.TemplateResponse("devices.html", {"request": request})
+    return templates.TemplateResponse(request, "devices.html")
 
 @web_app.get("/devices/{username}", response_class=HTMLResponse)
 async def page_device_detail(request: Request, username: str):
-    # Reuse user_detail template with device focus — or we can inline in devices.html via JS
-    return templates.TemplateResponse("user_detail.html", {"request": request, "username": username, "tab": "devices"})
+    return templates.TemplateResponse(request, "user_detail.html", {"username": username, "tab": "devices"})
 
 @web_app.get("/settings", response_class=HTMLResponse)
 async def page_settings(request: Request):
-    return templates.TemplateResponse("settings.html", {"request": request})
+    return templates.TemplateResponse(request, "settings.html")
 
 @web_app.get("/alerts", response_class=HTMLResponse)
 async def page_alerts(request: Request):
-    return templates.TemplateResponse("alerts.html", {"request": request})
+    return templates.TemplateResponse(request, "alerts.html")
 
 # ---------------------------------------------------------------------------
 # API routes

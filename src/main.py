@@ -59,6 +59,9 @@ async def main():
         asyncio.create_task(_run_periodically(_run_alerts, ALERTS_INTERVAL, "alerts")),
     ]
 
+    # 7. Запускаем Web-админку в отдельном таске
+    tasks.append(asyncio.create_task(_run_web()))
+
     # Ожидаем завершения (никогда не произойдёт в нормальном режиме)
     await asyncio.gather(*tasks)
 
@@ -83,6 +86,16 @@ async def _run_alerts():
     """Каждые 5 мин: проверка лимитов и истечения подписок."""
     await check_traffic_limits()
     await check_expiring_users(days_before=3)
+
+
+async def _run_web():
+    """Запуск FastAPI web-сервера."""
+    import uvicorn
+    from src.api.web import app
+    from src.config import settings
+    config = uvicorn.Config(app, host=settings.web_host, port=settings.web_port, log_level="info")
+    server = uvicorn.Server(config)
+    await server.serve()
 
 
 if __name__ == "__main__":
