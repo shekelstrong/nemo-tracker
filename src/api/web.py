@@ -8,10 +8,11 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException, Depends
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from loguru import logger
 
 # ---------------------------------------------------------------------------
 # App init
@@ -24,6 +25,16 @@ WEB_DIR = BASE_DIR / "web"
 
 web_app.mount("/static", StaticFiles(directory=str(WEB_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
+
+# ---------------------------------------------------------------------------
+# DB imports (lazy to avoid circular imports at module level)
+# ---------------------------------------------------------------------------
+
+from src.models import async_session
+from src.models.database import User as DBUser, Analytics, Alert, Connection
+from src.core.marzban_client import marzban_client
+from src.core.device_tracker import device_tracker
+from sqlalchemy import select, func, desc, distinct, delete
 
 # ---------------------------------------------------------------------------
 # WebSocket manager
@@ -53,7 +64,7 @@ class WSManager:
 ws_manager = WSManager()
 
 # ---------------------------------------------------------------------------
-# Helpers – load / save settings  (simple JSON file)
+# Settings file
 # ---------------------------------------------------------------------------
 
 SETTINGS_FILE = BASE_DIR / "data" / "settings.json"
@@ -84,112 +95,22 @@ def save_settings(data: dict):
     SETTINGS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False))
 
 # ---------------------------------------------------------------------------
-# Mock data helpers (replace with real Marzban / DB calls later)
+# Helpers
 # ---------------------------------------------------------------------------
 
-def _mock_dashboard():
-    now = datetime.utcnow()
-    online_24h = [{"hour": (now - timedelta(hours=23 - i)).strftime("%H:00"),
-                   "count": 10 + int(20 * abs((i % 7 - 3) / 3))} for i in range(24)]
-    traffic_30d = [{"day": (now - timedelta(days=29 - i)).strftime("%b %d"),
-                    "value": round(5 + 15 * abs((i % 11 - 5) / 5), 1)} for i in range(30)]
-    growth = [{"month": (now - timedelta(days=30 * (5 - i))).strftime("%b"),
-               "users": 50 + i * 30 + (i * i)} for i in range(6)]
-    peak_hours = {"labels": ["00-04", "04-08", "08-12", "12-16", "16-20", "20-24"],
-                  "values": [5, 3, 15, 20, 25, 18]}
-    return {
-        "stats": {"total_users": 234, "active_users": 187, "online_now": 42,
-                  "total_traffic": "3.2 TB"},
-        "online_24h": online_24h,
-        "traffic_30d": traffic_30d,
-        "growth": growth,
-        "peak_hours": peak_hours,
-        "recent_alerts": [
-            {"type": "device_over", "message": "User alex has 6 devices (limit: 3)", "time": "2 min ago"},
-            {"type": "traffic_80", "message": "User maria used 85% of traffic", "time": "15 min ago"},
-            {"type": "new_user", "message": "New user registered: john", "time": "1 hr ago"},
-        ]
-    }
+def _fmt_bytes(b: int) -> str:
+    if b is None:
+        return "0 B"
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if b < 1024:
+            return f"{b:.1f} {unit}"
+        b /= 1024
+    return f"{b:.1f} PB"
 
-def _mock_users():
-    statuses = ["active", "active", "active", "disabled", "active", "expired", "active"]
-    users = []
-    names = ["alex", "maria", "john", "olga", "dmitry", "anna", "sergey", "kate",
-             "peter", "elena", "ivan", "nina"]
-    for i, n in enumerate(names):
-        used = round(1 + 80 * ((i * 37) % 100) / 100, 1)
-        limit = 100.0
-        users.append({
-            "username": n,
-            "status": statuses[i % len(statuses)],
-            "traffic_used": used,
-            "traffic_limit": limit,
-            "devices": (i * 3) % 7,
-            "last_online": (datetime.utcnow() - timedelta(hours=(i * 5) % 48)).isoformat(),
-            "expire": (datetime.utcnow() + timedelta(days=30 - i * 2)).strftime("%Y-%m-%d"),
-        })
-    return users
-
-def _mock_user_detail(username: str):
-    return {
-        "username": username,
-        "status": "active",
-        "traffic_used": 45.2,
-        "traffic_limit": 100.0,
-        "devices": 3,
-        "device_limit": 5,
-        "created": "2025-10-15",
-        "expire": "2026-10-15",
-        "traffic_7d": [{"day": (datetime.utcnow() - timedelta(days=6 - i)).strftime("%b %d"),
-                         "dl": round(2 + 8 * abs((i % 5 - 2) / 2), 1),
-                         "ul": round(0.5 + 2 * abs((i % 3) / 2), 1)} for i in range(7)],
-        "ip_history": [
-            {"ip": "185.220.101.34", "country": "DE", "city": "Berlin", "first": "2026-04-10 08:23",
-             "last": "2026-04-18 09:01"},
-            {"ip": "91.108.56.12", "country": "RU", "city": "Moscow", "first": "2026-04-12 14:00",
-             "last": "2026-04-17 22:45"},
-        ],
-        "connections": [
-            {"time": "2026-04-18 09:01", "ip": "185.220.101.34", "device": "iPhone"},
-            {"time": "2026-04-18 08:30", "ip": "91.108.56.12", "device": "MacBook"},
-        ],
-    }
-
-def _mock_devices():
-    rows = []
-    names = ["alex", "maria", "john", "olga", "dmitry", "anna", "sergey"]
-    for i, n in enumerate(names):
-        ips = 1 + (i * 2) % 6
-        limit = 3 + i % 3
-        status = "ok" if ips <= limit else ("warning" if ips == limit else "over")
-        rows.append({"username": n, "unique_ips": ips, "device_limit": limit, "status": status})
-    return rows
-
-def _mock_device_detail(username: str):
-    return {
-        "username": username,
-        "device_limit": 5,
-        "ips": [
-            {"ip": "185.220.101.34", "country": "🇩🇪 Germany", "city": "Berlin",
-             "first_seen": "2026-04-10 08:23", "last_seen": "2026-04-18 09:01"},
-            {"ip": "91.108.56.12", "country": "🇷🇺 Russia", "city": "Moscow",
-             "first_seen": "2026-04-12 14:00", "last_seen": "2026-04-17 22:45"},
-            {"ip": "104.244.72.7", "country": "🇳🇱 Netherlands", "city": "Amsterdam",
-             "first_seen": "2026-04-15 11:30", "last_seen": "2026-04-16 19:20"},
-            {"ip": "45.133.1.55", "country": "🇫🇮 Finland", "city": "Helsinki",
-             "first_seen": "2026-04-16 03:00", "last_seen": "2026-04-16 03:05"},
-        ]
-    }
-
-def _mock_alerts():
-    types = ["new_user", "traffic_80", "device_over", "expiring"]
-    return [
-        {"id": i, "type": types[i % 4],
-         "message": f"Alert #{i}: sample message for {types[i%4]}",
-         "time": (datetime.utcnow() - timedelta(hours=i * 2)).isoformat(),
-         "resolved": i > 5}
-        for i in range(12)
-    ]
+def _fmt_pct(used, limit):
+    if not limit or limit <= 0:
+        return 0
+    return round((used / limit) * 100, 1)
 
 # ---------------------------------------------------------------------------
 # Page routes
@@ -224,45 +145,235 @@ async def page_alerts(request: Request):
     return templates.TemplateResponse(request, "alerts.html")
 
 # ---------------------------------------------------------------------------
-# API routes
+# API routes — REAL DATA
 # ---------------------------------------------------------------------------
 
 @web_app.get("/api/dashboard")
 async def api_dashboard():
-    return _mock_dashboard()
+    async with async_session() as session:
+        # Stats
+        total = await session.scalar(select(func.count(DBUser.id)))
+        active = await session.scalar(
+            select(func.count(DBUser.id)).where(DBUser.status == "active")
+        )
+        online = await session.scalar(
+            select(func.count(DBUser.id)).where(DBUser.status == "active", DBUser.was_online == True)
+        )
+        total_traffic = await session.scalar(
+            select(func.coalesce(func.sum(DBUser.used_traffic), 0))
+        )
+
+        # Recent analytics for charts
+        now = datetime.utcnow()
+        analytics_rows = (await session.execute(
+            select(Analytics).order_by(desc(Analytics.date)).limit(30)
+        )).scalars().all()
+
+        traffic_30d = []
+        user_growth = []
+        for row in reversed(analytics_rows):
+            d = row.date.strftime("%b %d") if hasattr(row.date, 'strftime') else str(row.date)
+            traffic_30d.append({"day": d, "value": round(row.total_traffic_gb, 1) if row.total_traffic_gb else 0})
+            user_growth.append({"date": d, "total": row.total_users, "active": row.active_users})
+
+        # Online over last 24h from connections
+        since_24h = now - timedelta(hours=24)
+        online_data = (await session.execute(
+            select(
+                func.date_trunc("hour", Connection.online_at).label("hour"),
+                func.count(distinct(Connection.username)).label("count")
+            )
+            .where(Connection.online_at >= since_24h)
+            .group_by("hour")
+            .order_by("hour")
+        )).all()
+        online_24h = [{"hour": r.hour.strftime("%H:00") if hasattr(r.hour, 'strftime') else str(r.hour),
+                        "count": r.count} for r in online_data]
+
+        # If no connection data yet, use current online count
+        if not online_24h:
+            online_24h = [{"hour": f"{(now - timedelta(hours=i)).strftime('%H:00')}",
+                           "count": online or 0} for i in range(24)]
+
+        # Peak hours (from connections, last 7 days)
+        since_7d = now - timedelta(days=7)
+        peak_rows = (await session.execute(
+            select(
+                func.extract("hour", Connection.online_at).label("h"),
+                func.count().label("cnt")
+            )
+            .where(Connection.online_at >= since_7d)
+            .group_by("h")
+            .order_by("h")
+        )).all()
+        peak_hours = {"labels": [], "values": []}
+        for r in peak_rows:
+            h = int(r.h)
+            peak_hours["labels"].append(f"{h:02d}-{h+1:02d}" if h < 23 else "23-00")
+            peak_hours["values"].append(r.cnt)
+        if not peak_hours["labels"]:
+            peak_hours = {"labels": ["00-04","04-08","08-12","12-16","16-20","20-24"],
+                          "values": [0,0,0,0,0,0]}
+
+        # Recent alerts
+        recent_alerts = (await session.execute(
+            select(Alert).order_by(desc(Alert.created_at)).limit(10)
+        )).scalars().all()
+        alerts_list = []
+        for a in recent_alerts:
+            age = now - a.created_at.replace(tzinfo=None) if a.created_at else timedelta()
+            if age.total_seconds() < 60:
+                time_str = "just now"
+            elif age.total_seconds() < 3600:
+                time_str = f"{int(age.total_seconds()/60)} min ago"
+            elif age.total_seconds() < 86400:
+                time_str = f"{int(age.total_seconds()/3600)} hr ago"
+            else:
+                time_str = f"{int(age.total_seconds()/86400)}d ago"
+            alerts_list.append({
+                "type": a.alert_type,
+                "message": a.message,
+                "time": time_str,
+            })
+
+        return {
+            "stats": {
+                "total_users": total or 0,
+                "active_users": active or 0,
+                "online_now": online or 0,
+                "total_traffic": _fmt_bytes(total_traffic or 0),
+            },
+            "online_24h": online_24h,
+            "traffic_30d": traffic_30d,
+            "growth": user_growth,
+            "peak_hours": peak_hours,
+            "recent_alerts": alerts_list,
+        }
+
 
 @web_app.get("/api/users")
 async def api_users():
-    return _mock_users()
+    async with async_session() as session:
+        rows = (await session.execute(
+            select(DBUser).order_by(desc(DBUser.was_online), DBUser.username)
+        )).scalars().all()
+
+        users = []
+        for u in rows:
+            traffic_pct = _fmt_pct(u.used_traffic or 0, u.data_limit) if u.data_limit else None
+            users.append({
+                "username": u.username,
+                "status": u.status,
+                "traffic_used_gb": round((u.used_traffic or 0) / 1024**3, 2),
+                "traffic_limit_gb": round((u.data_limit or 0) / 1024**3, 2) if u.data_limit else None,
+                "traffic_pct": traffic_pct,
+                "devices": u.device_count or 0,
+                "last_online": u.online_at.isoformat() if u.online_at else None,
+                "expire": u.expire.isoformat() if u.expire else None,
+                "tier": u.tier or 0,
+            })
+        return users
+
 
 @web_app.get("/api/users/{username}")
 async def api_user_detail(username: str):
-    return _mock_user_detail(username)
+    async with async_session() as session:
+        user = (await session.execute(
+            select(DBUser).where(DBUser.username == username)
+        )).scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(404, "User not found")
+
+        # Traffic 7d (from analytics or user data)
+        now = datetime.utcnow()
+        traffic_7d = [{"day": (now - timedelta(days=6-i)).strftime("%b %d"),
+                        "dl": round((user.used_traffic or 0) / 1024**3 / 7, 2),
+                        "ul": 0} for i in range(7)]
+
+        # IP history
+        from src.models.database import UserIP
+        ips = (await session.execute(
+            select(UserIP).where(UserIP.username == username).order_by(desc(UserIP.last_seen)).limit(20)
+        )).scalars().all()
+        ip_history = [{"ip": ip.ip, "country": ip.geo_country or "?", "city": ip.geo_city or "?",
+                        "first": ip.first_seen.strftime("%Y-%m-%d %H:%M") if ip.first_seen else "?",
+                        "last": ip.last_seen.strftime("%Y-%m-%d %H:%M") if ip.last_seen else "?"} for ip in ips]
+
+        # Recent connections
+        conns = (await session.execute(
+            select(Connection).where(Connection.username == username).order_by(desc(Connection.online_at)).limit(10)
+        )).scalars().all()
+        connections = [{"time": c.online_at.strftime("%Y-%m-%d %H:%M") if c.online_at else "?",
+                         "ip": "", "duration": f"{c.duration_min:.0f} min" if c.duration_min else "?"} for c in conns]
+
+        return {
+            "username": user.username,
+            "status": user.status,
+            "traffic_used_gb": round((user.used_traffic or 0) / 1024**3, 2),
+            "traffic_limit_gb": round((user.data_limit or 0) / 1024**3, 2) if user.data_limit else None,
+            "devices": len(ip_history),
+            "device_limit": user.device_count or 0,
+            "created": user.created_at.strftime("%Y-%m-%d") if user.created_at else "?",
+            "expire": user.expire.strftime("%Y-%m-%d") if user.expire else None,
+            "tier": user.tier or 0,
+            "traffic_7d": traffic_7d,
+            "ip_history": ip_history,
+            "connections": connections,
+        }
+
 
 @web_app.get("/api/devices")
 async def api_devices():
-    return _mock_devices()
+    overview = await device_tracker.get_all_overview()
+    return overview
+
 
 @web_app.get("/api/devices/{username}")
 async def api_device_detail(username: str):
-    return _mock_device_detail(username)
+    ips = await device_tracker.get_user_ips(username)
+    limit = device_tracker._device_limits.get(username, 0)
+    return {
+        "username": username,
+        "device_limit": limit,
+        "ips": ips,
+    }
+
 
 @web_app.get("/api/alerts")
 async def api_alerts(type: Optional[str] = None, resolved: Optional[bool] = None):
-    alerts = _mock_alerts()
-    if type:
-        alerts = [a for a in alerts if a["type"] == type]
-    if resolved is not None:
-        alerts = [a for a in alerts if a["resolved"] == resolved]
-    return alerts
+    async with async_session() as session:
+        q = select(Alert).order_by(desc(Alert.created_at)).limit(100)
+        if type:
+            q = q.where(Alert.alert_type == type)
+        if resolved is not None:
+            q = q.where(Alert.resolved == resolved)
+        rows = (await session.execute(q)).scalars().all()
+        return [
+            {"id": a.id, "type": a.alert_type, "message": a.message,
+             "time": a.created_at.isoformat() if a.created_at else None,
+             "resolved": a.resolved}
+            for a in rows
+        ]
+
 
 @web_app.post("/api/alerts/{alert_id}/resolve")
 async def api_resolve_alert(alert_id: int):
-    return {"ok": True}
+    async with async_session() as session:
+        alert = (await session.execute(
+            select(Alert).where(Alert.id == alert_id)
+        )).scalar_one_or_none()
+        if alert:
+            alert.resolved = True
+            await session.commit()
+            return {"ok": True}
+        raise HTTPException(404, "Alert not found")
+
 
 @web_app.get("/api/settings")
 async def api_get_settings():
     return load_settings()
+
 
 @web_app.post("/api/settings")
 async def api_save_settings(request: Request):
@@ -270,17 +381,24 @@ async def api_save_settings(request: Request):
     save_settings(data)
     return {"ok": True}
 
+
 @web_app.post("/api/settings/test-marzban")
 async def api_test_marzban():
-    # TODO: real connection test
-    await asyncio.sleep(0.5)
-    return {"ok": True, "message": "Connected successfully"}
+    try:
+        token = await marzban_client.get_token()
+        if token:
+            return {"ok": True, "message": "Connected successfully"}
+        return {"ok": False, "message": "Invalid credentials"}
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
+
 
 @web_app.post("/api/settings/test-telegram")
 async def api_test_telegram():
     # TODO: real bot test
     await asyncio.sleep(0.5)
     return {"ok": True, "message": "Bot token valid"}
+
 
 # ---------------------------------------------------------------------------
 # WebSocket
@@ -291,18 +409,17 @@ async def ws_endpoint(ws: WebSocket):
     await ws_manager.connect(ws)
     try:
         while True:
-            # Keep alive — client pings or we push periodically
-            data = await ws.receive_text()
-            # ignore incoming for now
+            await ws.receive_text()
     except WebSocketDisconnect:
         ws_manager.disconnect(ws)
 
-# ---------------------------------------------------------------------------
-# Periodic push (call from main app startup)
-# ---------------------------------------------------------------------------
 
 async def push_dashboard_updates():
-    """Call this from the main app's background loop."""
+    """Background task — push updates to connected WebSocket clients."""
     while True:
-        await asyncio.sleep(10)
-        await ws_manager.broadcast({"event": "dashboard_update", "data": _mock_dashboard()})
+        await asyncio.sleep(30)
+        try:
+            data = await api_dashboard()
+            await ws_manager.broadcast({"event": "dashboard_update", "data": data})
+        except Exception as e:
+            logger.error(f"WS push error: {e}")

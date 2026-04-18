@@ -13,7 +13,8 @@ from typing import Dict, List, Optional, Set
 from loguru import logger
 
 from src.core.marzban_client import marzban_client
-from src.models.database import async_session, UserIP, User as DBUser
+from src.models import async_session
+from src.models.database import UserIP, User as DBUser
 from sqlalchemy import select, delete, func, distinct
 
 
