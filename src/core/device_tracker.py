@@ -24,22 +24,32 @@ class DeviceTracker:
     # Populated from Marzban user data or external DB
     _device_limits: Dict[str, int] = {}
 
-    # IPs to ignore (proxy servers, internal)
-    IGNORED_IPS = {"51.250.40.213"}  # RU proxy for whitelist traffic
+    # IPs to ignore (from config: proxy servers, internal)
+    # Populated from settings.ignored_ips_set
+    IGNORED_IPS = set()  # Updated in __init__ or sync
 
     async def record_ip(self, username: str, ip: str, inbound: str = "", source: str = "sub"):
         """Record an IP address for a user.
         
-        Rules:
-        - vless-reality-standard: NEVER track/block
-        - vless-reality-whitelist: track only if user has device_count > 0 (new clients)
-        - Skip ignored IPs (proxy servers)
+        Rules (all configurable via .env):
+        - Inbounds in ignore_inbounds: NEVER track/block
+        - Inbounds in track_inbounds: track only if user has device_count > 0
+        - Skip ignored IPs (proxy servers, from config)
         """
         if not username or not ip:
             return
 
-        # Skip proxy/internal IPs
-        if ip in self.IGNORED_IPS or ip.startswith(("127.", "10.", "172.", "192.168.", "0.")):
+        # Skip proxy/internal IPs (configurable)
+        all_ignored = self.IGNORED_IPS | settings.ignored_ips_set
+        if ip in all_ignored or ip.startswith(("127.", "10.", "172.", "192.168.", "0.")):
+            return
+
+        # Skip ignored inbounds (e.g. standard VPN)
+        if inbound and inbound in settings.ignore_inbounds_list:
+            return
+
+        # Skip if inbound not in track list
+        if settings.track_inbounds_list and inbound not in settings.track_inbounds_list:
             return
 
         async with async_session() as session:
@@ -114,17 +124,17 @@ class DeviceTracker:
     async def check_and_enforce(self, username: str, inbound: str = "") -> Optional[dict]:
         """Check if user exceeds device limit. Returns alert dict if exceeded.
         
-        Rules:
-        - standard inbound: NEVER enforce
-        - whitelist inbound: enforce only if device_count > 0
+        Rules (all configurable):
+        - Inbounds in ignore_inbounds: NEVER enforce
+        - Only enforce if user has device_count > 0 (configurable)
         """
-        # Never enforce for standard tier
-        if "standard" in inbound or inbound == "standard":
+        # Skip ignored inbounds
+        if inbound and inbound in settings.ignore_inbounds_list:
             return None
 
         limit = self._device_limits.get(username, 0)
         if limit <= 0:
-            return None  # Old client without limit, or no limit set
+            return None  # No limit set (old client or unlimited)
 
         count = await self.get_unique_ip_count(username, days=30)
         

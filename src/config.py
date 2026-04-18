@@ -28,12 +28,30 @@ class Settings(BaseSettings):
     notify_on_new_device: bool = True
     notify_on_limit_exceeded: bool = True
 
+    # Device tracking rules (user configurable)
+    track_inbounds: str = "vless-reality-whitelist"  # comma-separated inbound tags to track
+    ignore_inbounds: str = "vless-reality-standard"  # never track these
+    ignored_ips: str = ""  # comma-separated IPs to ignore (proxy servers)
+    only_enforce_with_limit: bool = True  # only enforce on users with device_count > 0
+
     # GeoIP
     geoip_db_path: str = "./data/GeoLite2-City.mmdb"
 
     @property
     def admin_ids_list(self) -> List[int]:
         return [int(x.strip()) for x in self.admin_ids.split(",") if x.strip()]
+
+    @property
+    def track_inbounds_list(self) -> List[str]:
+        return [x.strip() for x in self.track_inbounds.split(",") if x.strip()]
+
+    @property
+    def ignore_inbounds_list(self) -> List[str]:
+        return [x.strip() for x in self.ignore_inbounds.split(",") if x.strip()]
+
+    @property
+    def ignored_ips_set(self) -> set:
+        return {x.strip() for x in self.ignored_ips.split(",") if x.strip()}
 
     class Config:
         env_file = ".env"
