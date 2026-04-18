@@ -19,12 +19,13 @@ from src.core.marzban_client import marzban_client
 from src.config import settings
 
 
-# Pattern: 2026/04/18 05:25:08 from 95.72.208.123:52341 accepted tcp:google.com:443 [inbound -> outbound]
+# Pattern: 2026/04/18 05:45:58.111225 from 51.250.40.213:44610 accepted tcp:104.21.42.37:443 [vless-reality-whitelist >> direct] email: 101.l7HtaB
 LOG_PATTERN = re.compile(
-    r"(\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2})\s+"
-    r"from\s+([\d.]+):(\d+)\s+"
-    r"accepted\s+\w+:([^\s]+)\s+"
+    r"(\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2})[\d.]*\s+"
+    r"(?:from\s+)?(?:tcp:)?([\d.]+):(\d+)\s+"
+    r"accepted\s+(\w+):([^\s]+)\s+"
     r"\[([^\]]+)\]"
+    r"(?:\s+email:\s*(.+))?"
 )
 
 # Inbound tags
@@ -70,10 +71,11 @@ class LogStreamReader:
         if not match:
             return None
 
-        timestamp_str, ip, port, dest, routing = match.groups()
-        
-        # Parse routing: "inbound -> outbound"
-        parts = [p.strip() for p in routing.split("->")]
+        timestamp_str, ip, port, protocol, dest, routing, email = match.groups()
+
+        # Parse routing: "inbound >> outbound" or "inbound -> outbound"
+        sep = ">>" if ">>" in routing else "->"
+        parts = [p.strip() for p in routing.split(sep)]
         inbound = parts[0] if len(parts) >= 1 else ""
         outbound = parts[1] if len(parts) >= 2 else ""
 
@@ -83,6 +85,12 @@ class LogStreamReader:
 
         tier = INBOUND_TAGS.get(inbound, "unknown")
 
+        # Clean email/username (e.g. "101.l7HtaB" or "77.user_278222385_20260328_113548")
+        username = email.strip() if email else ""
+        # Marzban email format: "INDEX.USERNAME" — extract just username
+        if "." in username:
+            username = username.split(".", 1)[1]
+
         try:
             ts = datetime.strptime(timestamp_str, "%Y/%m/%d %H:%M:%S")
         except ValueError:
@@ -91,10 +99,12 @@ class LogStreamReader:
         return {
             "ip": ip,
             "port": int(port),
+            "protocol": protocol,
             "destination": dest,
             "inbound": inbound,
-            "outbound": outbound,
+            "outbound": outbound.strip(),
             "tier": tier,
+            "username": username,
             "timestamp": ts,
         }
 
