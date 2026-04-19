@@ -283,7 +283,7 @@ const T = {
 
   // Auto-Renewal
   "nav.branding": { en: "🎨 Branding", ru: "🎨 Брендинг" },
-  "ar.title": { en: "Auto-Renewal", ru: "Автопродление" },
+  "nav.auto_renewal": { en: "🔄 Auto-Renewal", ru: "🔄 Автопродление" },
   "ar.stat_total": { en: "Total", ru: "Всего" },
   "ar.stat_active": { en: "Active", ru: "Активных" },
   "ar.stat_revenue": { en: "Revenue", ru: "Выручка" },

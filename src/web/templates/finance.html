@@ -227,14 +227,13 @@ async function loadTransactions() {
   const data = await fetch('/api/finance/transactions?' + params).then(r => r.json());
   const tbody = document.getElementById('txBody');
   tbody.innerHTML = data.transactions.map(tx => {
-    const dt = new Date(tx.created_at);
-    const dateStr = dt.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-    const amtStr = tx.currency === 'USDT' ? '$' + tx.amount + ' USDT' : tx.amount + ' ₽';
+    const dateStr = tx.date || '?';
+    const amtStr = tx.amount + ' ₽';
     return `<tr>
       <td>${dateStr}</td>
-      <td>${tx.username}</td>
+      <td>${tx.user}</td>
       <td><strong>${amtStr}</strong></td>
-      <td>${tx.payment_method}</td>
+      <td>${tx.method}</td>
       <td>${statusBadge(tx.status)}</td>
       <td>${tx.description || ''}</td>
     </tr>`;
