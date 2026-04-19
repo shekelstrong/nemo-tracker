@@ -2027,6 +2027,151 @@ async def api_mini_verify(request: Request):
     return {"ok": True, "token": token}
 
 
+# ---------------------------------------------------------------------------
+# API routes — Auto-Scaling
+# ---------------------------------------------------------------------------
+
+@web_app.get("/auto-scaling", response_class=HTMLResponse)
+async def page_auto_scaling(request: Request):
+    return templates.TemplateResponse(request, "auto_scaling.html")
+
+
+@web_app.get("/api/auto-scaling/policies")
+async def api_as_policies_list():
+    from src.models.database import ScalingPolicy, ScalingEvent
+    async with async_session() as session:
+        rows = (await session.execute(
+            select(ScalingPolicy).order_by(desc(ScalingPolicy.created_at))
+        )).scalars().all()
+        result = []
+        for p in rows:
+            # Count events
+            event_count = await session.scalar(
+                select(func.count(ScalingEvent.id)).where(ScalingEvent.policy_id == p.id)
+            )
+            result.append({
+                "id": p.id,
+                "name": p.name,
+                "enabled": p.enabled,
+                "min_nodes": p.min_nodes,
+                "max_nodes": p.max_nodes,
+                "scale_up_threshold_cpu": p.scale_up_threshold_cpu,
+                "scale_up_threshold_users": p.scale_up_threshold_users,
+                "scale_up_threshold_bandwidth_percent": p.scale_up_threshold_bandwidth_percent,
+                "cooldown_minutes": p.cooldown_minutes,
+                "provider": p.provider,
+                "provider_api_token": p.provider_api_token,
+                "server_type": p.server_type,
+                "region": p.region,
+                "image_id": p.image_id,
+                "marzban_template_url": p.marzban_template_url,
+                "last_scaled_at": p.last_scaled_at.isoformat() if p.last_scaled_at else None,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+                "event_count": event_count or 0,
+            })
+        return result
+
+
+@web_app.post("/api/auto-scaling/policies")
+async def api_as_policies_create(request: Request):
+    from src.models.database import ScalingPolicy
+    data = await request.json()
+    async with async_session() as session:
+        p = ScalingPolicy(
+            name=data["name"],
+            enabled=data.get("enabled", True),
+            min_nodes=int(data.get("min_nodes", 1)),
+            max_nodes=int(data.get("max_nodes", 10)),
+            scale_up_threshold_cpu=int(data.get("scale_up_threshold_cpu", 80)),
+            scale_up_threshold_users=int(data.get("scale_up_threshold_users", 200)),
+            scale_up_threshold_bandwidth_percent=int(data.get("scale_up_threshold_bandwidth_percent", 90)),
+            cooldown_minutes=int(data.get("cooldown_minutes", 30)),
+            provider=data.get("provider", "hetzner"),
+            provider_api_token=data.get("provider_api_token"),
+            server_type=data.get("server_type", "cx22"),
+            region=data.get("region"),
+            image_id=data.get("image_id"),
+            marzban_template_url=data.get("marzban_template_url"),
+        )
+        session.add(p)
+        await session.commit()
+        await session.refresh(p)
+        return {"id": p.id, "ok": True}
+
+
+@web_app.put("/api/auto-scaling/policies/{policy_id}")
+async def api_as_policies_update(policy_id: int, request: Request):
+    from src.models.database import ScalingPolicy
+    data = await request.json()
+    async with async_session() as session:
+        p = (await session.execute(
+            select(ScalingPolicy).where(ScalingPolicy.id == policy_id)
+        )).scalar_one_or_none()
+        if not p:
+            raise HTTPException(404, "Policy not found")
+        for field in ["name", "min_nodes", "max_nodes", "scale_up_threshold_cpu",
+                      "scale_up_threshold_users", "scale_up_threshold_bandwidth_percent",
+                      "cooldown_minutes", "provider", "provider_api_token", "server_type",
+                      "region", "image_id", "marzban_template_url"]:
+            if field in data:
+                setattr(p, field, data[field])
+        await session.commit()
+        return {"ok": True}
+
+
+@web_app.delete("/api/auto-scaling/policies/{policy_id}")
+async def api_as_policies_delete(policy_id: int):
+    from src.models.database import ScalingPolicy
+    async with async_session() as session:
+        p = (await session.execute(
+            select(ScalingPolicy).where(ScalingPolicy.id == policy_id)
+        )).scalar_one_or_none()
+        if not p:
+            raise HTTPException(404, "Policy not found")
+        await session.delete(p)
+        await session.commit()
+        return {"ok": True}
+
+
+@web_app.post("/api/auto-scaling/policies/{policy_id}/toggle")
+async def api_as_policies_toggle(policy_id: int):
+    from src.models.database import ScalingPolicy
+    async with async_session() as session:
+        p = (await session.execute(
+            select(ScalingPolicy).where(ScalingPolicy.id == policy_id)
+        )).scalar_one_or_none()
+        if not p:
+            raise HTTPException(404, "Policy not found")
+        p.enabled = not p.enabled
+        await session.commit()
+        return {"ok": True, "enabled": p.enabled}
+
+
+@web_app.get("/api/auto-scaling/events")
+async def api_as_events(limit: int = 50):
+    from src.models.database import ScalingEvent
+    async with async_session() as session:
+        rows = (await session.execute(
+            select(ScalingEvent).order_by(desc(ScalingEvent.created_at)).limit(limit)
+        )).scalars().all()
+        return [{
+            "id": e.id,
+            "policy_id": e.policy_id,
+            "action": e.action,
+            "server_id": e.server_id,
+            "status": e.status,
+            "details": json.loads(e.details) if e.details else None,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+            "completed_at": e.completed_at.isoformat() if e.completed_at else None,
+        } for e in rows]
+
+
+@web_app.post("/api/auto-scaling/test")
+async def api_as_test():
+    from src.core.auto_scaler import dry_run
+    return await dry_run()
+
+
 async def push_dashboard_updates():
     """Background task — push updates to connected WebSocket clients."""
     while True:

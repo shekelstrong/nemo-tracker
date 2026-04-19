@@ -266,6 +266,43 @@ class BrandingSettings(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class ScalingPolicy(Base):
+    """Политики авто-скейлинга серверов."""
+    __tablename__ = "scaling_policies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    min_nodes: Mapped[int] = mapped_column(Integer, default=1)
+    max_nodes: Mapped[int] = mapped_column(Integer, default=10)
+    scale_up_threshold_cpu: Mapped[int] = mapped_column(Integer, default=80)
+    scale_up_threshold_users: Mapped[int] = mapped_column(Integer, default=200)
+    scale_up_threshold_bandwidth_percent: Mapped[int] = mapped_column(Integer, default=90)
+    cooldown_minutes: Mapped[int] = mapped_column(Integer, default=30)
+    provider: Mapped[str] = mapped_column(String(32), default="hetzner")  # hetzner/digitalocean/vultr/custom
+    provider_api_token: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    server_type: Mapped[str] = mapped_column(String(32), default="cx22")
+    region: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    image_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    marzban_template_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    last_scaled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ScalingEvent(Base):
+    """События авто-скейлинга."""
+    __tablename__ = "scaling_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    policy_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(16), nullable=False)  # scale_up / scale_down
+    server_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending/provisioning/ready/failed
+    details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Alert(Base):
     """Уведомления и предупреждения."""
     __tablename__ = "alerts"

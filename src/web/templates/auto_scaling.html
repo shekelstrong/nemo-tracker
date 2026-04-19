@@ -1,0 +1,358 @@
+{% extends "base.html" %}
+{% block title %}Auto-Scaling — Nemo Tracker{% endblock %}
+{% block topbar_title %}nav.auto_scaling{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+
+  <!-- Current Status -->
+  <div class="row mb-4">
+    <div class="col-12">
+      <h5 data-i18n="as.status_title">Current Status</h5>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+      <div class="card stat-card">
+        <div class="stat-value" id="statTotalNodes">-</div>
+        <div class="stat-label" data-i18n="as.total_nodes">Total Nodes</div>
+      </div>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+      <div class="card stat-card">
+        <div class="stat-value" id="statActiveNodes">-</div>
+        <div class="stat-label" data-i18n="as.active_nodes">Active</div>
+      </div>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+      <div class="card stat-card">
+        <div class="stat-value" id="statTotalUsers">-</div>
+        <div class="stat-label" data-i18n="as.total_users">Total Users</div>
+      </div>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+      <div class="card stat-card">
+        <div class="stat-value" id="statAvgLoad">-</div>
+        <div class="stat-label" data-i18n="as.avg_load">Avg Load</div>
+      </div>
+    </div>
+    <div class="col-12">
+      <div class="card p-3 d-flex align-items-center gap-3">
+        <span data-i18n="as.would_scale">Would scale up now:</span>
+        <span id="scaleIndicator" class="badge bg-secondary">—</span>
+        <button class="btn btn-sm btn-outline-primary ms-auto" onclick="runDryRun()">
+          <i class="fas fa-flask"></i> <span data-i18n="as.dry_run">Dry Run</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Policies -->
+  <div class="row mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center mb-3">
+      <h5 data-i18n="as.policies_title">Scaling Policies</h5>
+      <button class="btn btn-primary" onclick="openPolicyModal()">
+        <i class="fas fa-plus"></i> <span data-i18n="as.add_policy">Add Policy</span>
+      </button>
+    </div>
+    <div class="col-12" id="policiesContainer">
+      <div class="text-center text-muted py-4" data-i18n="as.no_policies">No scaling policies yet</div>
+    </div>
+  </div>
+
+  <!-- Events -->
+  <div class="row">
+    <div class="col-12">
+      <h5 data-i18n="as.events_title">Scaling Events</h5>
+      <div class="card">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th data-i18n="as.ev.date">Date</th>
+                <th data-i18n="as.ev.action">Action</th>
+                <th data-i18n="as.ev.server">Server</th>
+                <th data-i18n="as.ev.status">Status</th>
+                <th data-i18n="as.ev.details">Details</th>
+              </tr>
+            </thead>
+            <tbody id="eventsTable">
+              <tr><td colspan="5" class="text-center text-muted" data-i18n="as.no_events">No events yet</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Policy Modal -->
+<div class="modal fade" id="policyModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="policyModalTitle" data-i18n="as.create_policy">Create Policy</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="policyId">
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label class="form-label" data-i18n="as.policy_name">Policy Name</label>
+            <input type="text" class="form-control" id="policyName" placeholder="My Scaling Policy">
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label" data-i18n="as.provider">Provider</label>
+            <select class="form-select" id="policyProvider">
+              <option value="hetzner">Hetzner Cloud</option>
+              <option value="digitalocean">DigitalOcean</option>
+              <option value="vultr">Vultr</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label" data-i18n="as.api_token">API Token</label>
+            <input type="password" class="form-control" id="policyApiToken" placeholder="*****">
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label" data-i18n="as.server_type">Server Type</label>
+            <input type="text" class="form-control" id="policyServerType" value="cx22" placeholder="cx22">
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label" data-i18n="as.region">Region</label>
+            <input type="text" class="form-control" id="policyRegion" placeholder="fsn1">
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label" data-i18n="as.image_id">Image ID</label>
+            <input type="text" class="form-control" id="policyImageId" placeholder="ubuntu-22.04">
+          </div>
+          <div class="col-md-4 mb-3">
+            <label class="form-label" data-i18n="as.min_nodes">Min Nodes</label>
+            <input type="number" class="form-control" id="policyMinNodes" value="1" min="0">
+          </div>
+          <div class="col-md-4 mb-3">
+            <label class="form-label" data-i18n="as.max_nodes">Max Nodes</label>
+            <input type="number" class="form-control" id="policyMaxNodes" value="10" min="1">
+          </div>
+          <div class="col-md-4 mb-3">
+            <label class="form-label" data-i18n="as.cooldown">Cooldown (min)</label>
+            <input type="number" class="form-control" id="policyCooldown" value="30" min="1">
+          </div>
+          <div class="col-md-4 mb-3">
+            <label class="form-label" data-i18n="as.threshold_cpu">CPU Threshold %</label>
+            <input type="number" class="form-control" id="policyThresholdCpu" value="80" min="1" max="100">
+          </div>
+          <div class="col-md-4 mb-3">
+            <label class="form-label" data-i18n="as.threshold_users">Users Threshold</label>
+            <input type="number" class="form-control" id="policyThresholdUsers" value="200" min="1">
+          </div>
+          <div class="col-md-4 mb-3">
+            <label class="form-label" data-i18n="as.threshold_bw">Bandwidth Threshold %</label>
+            <input type="number" class="form-control" id="policyThresholdBw" value="90" min="1" max="100">
+          </div>
+          <div class="col-12 mb-3">
+            <label class="form-label" data-i18n="as.marzban_template">Marzban Template URL</label>
+            <input type="text" class="form-control" id="policyTemplateUrl" placeholder="https://...">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="as.cancel">Cancel</button>
+        <button class="btn btn-primary" onclick="savePolicy()" data-i18n="as.save">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .stat-card {
+    background: var(--card-bg, #1a1d23);
+    border: 1px solid var(--border, #2d3436);
+    border-radius: 12px;
+    padding: 1.25rem;
+    text-align: center;
+  }
+  .stat-card .stat-value { font-size: 2rem; font-weight: 700; }
+  .stat-card .stat-label { font-size: 0.85rem; opacity: 0.7; margin-top: 0.25rem; }
+  .badge-pending { background: #f39c12; }
+  .badge-provisioning { background: #3498db; }
+  .badge-ready { background: #2ecc71; }
+  .badge-failed { background: #e74c3c; }
+  .policy-card {
+    background: var(--card-bg, #1a1d23);
+    border: 1px solid var(--border, #2d3436);
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .policy-card.disabled { opacity: 0.5; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const LANG = getLang();
+
+function _t(en, ru) { return LANG === 'ru' ? ru : en; }
+
+async function loadPolicies() {
+  const policies = await fetch('/api/auto-scaling/policies').then(r => r.json());
+  const container = document.getElementById('policiesContainer');
+
+  if (!policies.length) {
+    container.innerHTML = `<div class="text-center text-muted py-4">${_t('No scaling policies yet', 'Политик масштабирования пока нет')}</div>`;
+    return;
+  }
+
+  container.innerHTML = policies.map(p => `
+    <div class="policy-card ${p.enabled ? '' : 'disabled'}">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <h6 class="mb-1">${p.name}</h6>
+          <small class="text-muted">
+            ${p.provider} · ${p.server_type} · ${p.region || '—'}
+          </small>
+        </div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm ${p.enabled ? 'btn-success' : 'btn-secondary'}" onclick="togglePolicy(${p.id})" title="${_t('Toggle', 'Вкл/Выкл')}">
+            <i class="fas fa-power-off"></i>
+          </button>
+          <button class="btn btn-sm btn-outline-primary" onclick="editPolicy(${p.id})" title="${_t('Edit', 'Редактировать')}">
+            <i class="fas fa-edit"></i>
+          </button>
+          <button class="btn btn-sm btn-outline-danger" onclick="deletePolicy(${p.id})" title="${_t('Delete', 'Удалить')}">
+            <i class="fas fa-trash"></i>
+          </button>
+        </div>
+      </div>
+      <div class="row mt-2 text-center">
+        <div class="col"><small class="text-muted">${_t('CPU', 'CPU')}</small><br><strong>${p.scale_up_threshold_cpu}%</strong></div>
+        <div class="col"><small class="text-muted">${_t('Users', 'Юзеры')}</small><br><strong>${p.scale_up_threshold_users}</strong></div>
+        <div class="col"><small class="text-muted">${_t('BW', 'Трафик')}</small><br><strong>${p.scale_up_threshold_bandwidth_percent}%</strong></div>
+        <div class="col"><small class="text-muted">${_t('Nodes', 'Ноды')}</small><br><strong>${p.min_nodes}-${p.max_nodes}</strong></div>
+        <div class="col"><small class="text-muted">${_t('Cooldown', 'Кулдаун')}</small><br><strong>${p.cooldown_minutes}${_t('m', 'м')}</strong></div>
+        <div class="col"><small class="text-muted">${_t('Events', 'Событий')}</small><br><strong>${p.event_count}</strong></div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function loadEvents() {
+  const events = await fetch('/api/auto-scaling/events').then(r => r.json());
+  const tbody = document.getElementById('eventsTable');
+
+  if (!events.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">${_t('No events yet', 'Событий пока нет')}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = events.map(e => {
+    const statusClass = {pending: 'badge-pending', provisioning: 'badge-provisioning', ready: 'badge-ready', failed: 'badge-failed'}[e.status] || 'bg-secondary';
+    const statusText = {pending: _t('Pending','Ожидание'), provisioning: _t('Provisioning','Создание'), ready: _t('Ready','Готово'), failed: _t('Failed','Ошибка')}[e.status] || e.status;
+    const actionText = e.action === 'scale_up' ? '⬆️ Scale Up' : '⬇️ Scale Down';
+    const date = e.created_at ? new Date(e.created_at).toLocaleString(LANG === 'ru' ? 'ru-RU' : 'en-US') : '—';
+    const details = e.details ? `<small class="text-muted">${JSON.stringify(e.details).substring(0, 80)}</small>` : '';
+    return `<tr>
+      <td>${date}</td>
+      <td>${actionText}</td>
+      <td>${e.server_id || '—'}</td>
+      <td><span class="badge ${statusClass}">${statusText}</span></td>
+      <td>${details}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadStatus() {
+  try {
+    const servers = await fetch('/api/servers').then(r => r.json());
+    const active = servers.filter(s => s.is_active);
+    document.getElementById('statTotalNodes').textContent = servers.length;
+    document.getElementById('statActiveNodes').textContent = active.length;
+    document.getElementById('statTotalUsers').textContent = active.reduce((s, sv) => s + (sv.current_users || 0), 0);
+
+    const totalUsers = active.reduce((s, sv) => s + (sv.current_users || 0), 0);
+    const totalMax = active.reduce((s, sv) => s + (sv.max_users || 200), 0);
+    const avgLoad = totalMax > 0 ? Math.round((totalUsers / totalMax) * 100) : 0;
+    document.getElementById('statAvgLoad').textContent = avgLoad + '%';
+  } catch {}
+}
+
+async function runDryRun() {
+  const result = await fetch('/api/auto-scaling/test', {method: 'POST'}).then(r => r.json());
+  const ind = document.getElementById('scaleIndicator');
+  const anyUp = result.decisions?.some(d => d.would_scale_up);
+  ind.textContent = anyUp ? '✅ Yes / Да' : '❌ No / Нет';
+  ind.className = 'badge ' + (anyUp ? 'bg-warning text-dark' : 'bg-success');
+}
+
+function openPolicyModal(policy = null) {
+  document.getElementById('policyId').value = policy?.id || '';
+  document.getElementById('policyName').value = policy?.name || '';
+  document.getElementById('policyProvider').value = policy?.provider || 'hetzner';
+  document.getElementById('policyApiToken').value = policy?.provider_api_token || '';
+  document.getElementById('policyServerType').value = policy?.server_type || 'cx22';
+  document.getElementById('policyRegion').value = policy?.region || '';
+  document.getElementById('policyImageId').value = policy?.image_id || '';
+  document.getElementById('policyMinNodes').value = policy?.min_nodes ?? 1;
+  document.getElementById('policyMaxNodes').value = policy?.max_nodes ?? 10;
+  document.getElementById('policyCooldown').value = policy?.cooldown_minutes ?? 30;
+  document.getElementById('policyThresholdCpu').value = policy?.scale_up_threshold_cpu ?? 80;
+  document.getElementById('policyThresholdUsers').value = policy?.scale_up_threshold_users ?? 200;
+  document.getElementById('policyThresholdBw').value = policy?.scale_up_threshold_bandwidth_percent ?? 90;
+  document.getElementById('policyTemplateUrl').value = policy?.marzban_template_url || '';
+  document.getElementById('policyModalTitle').textContent = policy ? _t('Edit Policy', 'Редактировать') : _t('Create Policy', 'Создать политику');
+  new bootstrap.Modal(document.getElementById('policyModal')).show();
+}
+
+async function editPolicy(id) {
+  const policies = await fetch('/api/auto-scaling/policies').then(r => r.json());
+  const p = policies.find(x => x.id === id);
+  if (p) openPolicyModal(p);
+}
+
+async function savePolicy() {
+  const id = document.getElementById('policyId').value;
+  const data = {
+    name: document.getElementById('policyName').value,
+    provider: document.getElementById('policyProvider').value,
+    provider_api_token: document.getElementById('policyApiToken').value || null,
+    server_type: document.getElementById('policyServerType').value,
+    region: document.getElementById('policyRegion').value || null,
+    image_id: document.getElementById('policyImageId').value || null,
+    min_nodes: parseInt(document.getElementById('policyMinNodes').value),
+    max_nodes: parseInt(document.getElementById('policyMaxNodes').value),
+    cooldown_minutes: parseInt(document.getElementById('policyCooldown').value),
+    scale_up_threshold_cpu: parseInt(document.getElementById('policyThresholdCpu').value),
+    scale_up_threshold_users: parseInt(document.getElementById('policyThresholdUsers').value),
+    scale_up_threshold_bandwidth_percent: parseInt(document.getElementById('policyThresholdBw').value),
+    marzban_template_url: document.getElementById('policyTemplateUrl').value || null,
+  };
+
+  if (!data.name) { alert(_t('Name is required', 'Укажите название')); return; }
+
+  if (id) {
+    await fetch(`/api/auto-scaling/policies/${id}`, {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
+  } else {
+    await fetch('/api/auto-scaling/policies', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
+  }
+
+  bootstrap.Modal.getInstance(document.getElementById('policyModal')).hide();
+  await loadPolicies();
+}
+
+async function togglePolicy(id) {
+  await fetch(`/api/auto-scaling/policies/${id}/toggle`, {method: 'POST'});
+  await loadPolicies();
+}
+
+async function deletePolicy(id) {
+  if (!confirm(_t('Delete this policy?', 'Удалить эту политику?'))) return;
+  await fetch(`/api/auto-scaling/policies/${id}`, {method: 'DELETE'});
+  await loadPolicies();
+}
+
+// Init
+loadStatus();
+loadPolicies();
+loadEvents();
+</script>
+{% endblock %}
