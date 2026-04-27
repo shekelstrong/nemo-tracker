@@ -2,6 +2,19 @@
 
 # 🦈 Nemo Tracker
 
+<div align="center">
+
+[![GitHub stars](https://img.shields.io/github/stars/shekelstrong/nemo-tracker?style=for-the-badge&color=yellow)](https://github.com/shekelstrong/nemo-tracker/stargazers)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](https://github.com/shekelstrong/nemo-tracker/blob/main/LICENSE)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://github.com/shekelstrong/nemo-tracker#quick-start)
+[![GitHub Release](https://img.shields.io/github/v/release/shekelstrong/nemo-tracker?style=for-the-badge&color=green)](https://github.com/shekelstrong/nemo-tracker/releases)
+[![Discussions](https://img.shields.io/github/discussions/shekelstrong/nemo-tracker?style=for-the-badge&color=58A6FF)](https://github.com/shekelstrong/nemo-tracker/discussions)
+[![Issues](https://img.shields.io/github/issues/shekelstrong/nemo-tracker?style=for-the-badge&color=red)](https://github.com/shekelstrong/nemo-tracker/issues)
+
+</div>
+
+
+
 **Advanced VPN Analytics, Admin Dashboard & Business Management for Marzban**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
